@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // readFile reads the json-data in the provided path and marshals into dest.
@@ -39,7 +39,7 @@ func readFile(path, desc string, dest interface{}) error {
 }
 
 // createBasedir makes sure the basedir exists, if user specified one.
-func createBasedir(ctx *cli.Context) (string, error) {
+func createBasedir(ctx *cli.Command) (string, error) {
 	baseDir := ""
 	if ctx.IsSet(OutputBasedir.Name) {
 		if base := ctx.String(OutputBasedir.Name); len(base) > 0 {

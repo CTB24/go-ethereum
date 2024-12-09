@@ -18,6 +18,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/tests"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -57,7 +58,7 @@ var stateTestCommand = &cli.Command{
 	}, traceFlags),
 }
 
-func stateTestCmd(ctx *cli.Context) error {
+func stateTestCmd(_ context.Context, ctx *cli.Command) error {
 	path := ctx.Args().First()
 
 	// If path is provided, run the tests at that path.
@@ -93,7 +94,7 @@ func stateTestCmd(ctx *cli.Context) error {
 }
 
 // runStateTest loads the state-test given by fname, and executes the test.
-func runStateTest(ctx *cli.Context, fname string) ([]testResult, error) {
+func runStateTest(ctx *cli.Command, fname string) ([]testResult, error) {
 	src, err := os.ReadFile(fname)
 	if err != nil {
 		return nil, err

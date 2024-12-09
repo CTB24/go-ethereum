@@ -17,13 +17,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var newPassphraseFlag = &cli.StringFlag{
@@ -41,7 +42,7 @@ Change the password of a keyfile.`,
 		passphraseFlag,
 		newPassphraseFlag,
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(_ context.Context, ctx *cli.Command) error {
 		keyfilepath := ctx.Args().First()
 
 		// Read key from file.

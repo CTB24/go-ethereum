@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
@@ -30,14 +31,14 @@ import (
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	dnsCommand = &cli.Command{
 		Name:  "dns",
 		Usage: "DNS Discovery Commands",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			dnsSyncCommand,
 			dnsSignCommand,
 			dnsTXTCommand,
@@ -121,7 +122,7 @@ const (
 )
 
 // dnsSync performs dnsSyncCommand.
-func dnsSync(ctx *cli.Context) error {
+func dnsSync(_ context.Context, ctx *cli.Command) error {
 	var (
 		c      = dnsClient(ctx)
 		url    = ctx.Args().Get(0)
@@ -146,7 +147,7 @@ func dnsSync(ctx *cli.Context) error {
 	return nil
 }
 
-func dnsSign(ctx *cli.Context) error {
+func dnsSign(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 2 {
 		return errors.New("need tree definition directory and key file as arguments")
 	}
@@ -167,7 +168,7 @@ func dnsSign(ctx *cli.Context) error {
 		domain = ctx.String(dnsDomainFlag.Name)
 	}
 	if ctx.IsSet(dnsSeqFlag.Name) {
-		def.Meta.Seq = ctx.Uint(dnsSeqFlag.Name)
+		def.Meta.Seq = uint(ctx.Uint(dnsSeqFlag.Name))
 	} else {
 		def.Meta.Seq++ // Auto-bump sequence number if not supplied via flag.
 	}
@@ -200,7 +201,7 @@ func directoryName(dir string) string {
 }
 
 // dnsToTXT performs dnsTXTCommand.
-func dnsToTXT(ctx *cli.Context) error {
+func dnsToTXT(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need tree definition directory as argument")
 	}
@@ -217,7 +218,7 @@ func dnsToTXT(ctx *cli.Context) error {
 }
 
 // dnsToCloudflare performs dnsCloudflareCommand.
-func dnsToCloudflare(ctx *cli.Context) error {
+func dnsToCloudflare(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return errors.New("need tree definition directory as argument")
 	}
@@ -230,7 +231,7 @@ func dnsToCloudflare(ctx *cli.Context) error {
 }
 
 // dnsToRoute53 performs dnsRoute53Command.
-func dnsToRoute53(ctx *cli.Context) error {
+func dnsToRoute53(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return errors.New("need tree definition directory as argument")
 	}
@@ -243,7 +244,7 @@ func dnsToRoute53(ctx *cli.Context) error {
 }
 
 // dnsNukeRoute53 performs dnsRoute53NukeCommand.
-func dnsNukeRoute53(ctx *cli.Context) error {
+func dnsNukeRoute53(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return errors.New("need domain name as argument")
 	}
@@ -266,10 +267,10 @@ func loadSigningKey(keyfile string) *ecdsa.PrivateKey {
 }
 
 // dnsClient configures the DNS discovery client from command line flags.
-func dnsClient(ctx *cli.Context) *dnsdisc.Client {
+func dnsClient(cmd *cli.Command) *dnsdisc.Client {
 	var cfg dnsdisc.Config
-	if commandHasFlag(ctx, dnsTimeoutFlag) {
-		cfg.Timeout = ctx.Duration(dnsTimeoutFlag.Name)
+	if commandHasFlag(cmd, dnsTimeoutFlag) {
+		cfg.Timeout = cmd.Duration(dnsTimeoutFlag.Name)
 	}
 	return dnsdisc.NewClient(cfg)
 }

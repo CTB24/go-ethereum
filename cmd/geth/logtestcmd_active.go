@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -28,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var logTestCommand = &cli.Command{
@@ -49,7 +50,7 @@ func (c customQuotedStringer) String() string {
 
 // logTest is an entry point which spits out some logs. This is used by testing
 // to verify expected outputs
-func logTest(ctx *cli.Context) error {
+func logTest(_ context.Context, ctx *cli.Command) error {
 	{ // big.Int
 		ba, _ := new(big.Int).SetString("111222333444555678999", 10)    // "111,222,333,444,555,678,999"
 		bb, _ := new(big.Int).SetString("-111222333444555678999", 10)   // "-111,222,333,444,555,678,999"

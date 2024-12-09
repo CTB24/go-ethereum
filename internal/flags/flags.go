@@ -18,25 +18,40 @@ package flags
 
 import (
 	"errors"
-	"flag"
-	"fmt"
 	"math/big"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
+
+// DirectoryFlag is custom cli.Flag type which expand the received string to an absolute path.
+// e.g. ~/.ethereum -> /home/username/.ethereum
+type DirectoryFlag = cli.FlagBase[string, cli.NoConfig, DirectoryString]
 
 // DirectoryString is custom type which is registered in the flags library which cli uses for
 // argument parsing. This allows us to expand Value to an absolute path when
 // the argument is parsed
 type DirectoryString string
 
+func (s DirectoryString) Create(val string, p *string, c cli.NoConfig) cli.Value {
+	*p = val
+	wrapper := DirectoryString(val)
+	return &wrapper
+}
+
+func (s DirectoryString) ToString(val string) string {
+	return val
+}
+
 func (s *DirectoryString) String() string {
+	return string(*s)
+}
+
+func (s *DirectoryString) Get() any {
 	return string(*s)
 }
 
@@ -45,172 +60,33 @@ func (s *DirectoryString) Set(value string) error {
 	return nil
 }
 
-var (
-	_ cli.Flag              = (*DirectoryFlag)(nil)
-	_ cli.RequiredFlag      = (*DirectoryFlag)(nil)
-	_ cli.VisibleFlag       = (*DirectoryFlag)(nil)
-	_ cli.DocGenerationFlag = (*DirectoryFlag)(nil)
-	_ cli.CategorizableFlag = (*DirectoryFlag)(nil)
-)
-
-// DirectoryFlag is custom cli.Flag type which expand the received string to an absolute path.
-// e.g. ~/.ethereum -> /home/username/.ethereum
-type DirectoryFlag struct {
-	Name string
-
-	Category    string
-	DefaultText string
-	Usage       string
-
-	Required   bool
-	Hidden     bool
-	HasBeenSet bool
-
-	Value DirectoryString
-
-	Aliases []string
-	EnvVars []string
-}
-
-// For cli.Flag:
-
-func (f *DirectoryFlag) Names() []string { return append([]string{f.Name}, f.Aliases...) }
-func (f *DirectoryFlag) IsSet() bool     { return f.HasBeenSet }
-func (f *DirectoryFlag) String() string  { return cli.FlagStringer(f) }
-
-// Apply called by cli library, grabs variable from environment (if in env)
-// and adds variable to flag set for parsing.
-func (f *DirectoryFlag) Apply(set *flag.FlagSet) error {
-	for _, envVar := range f.EnvVars {
-		envVar = strings.TrimSpace(envVar)
-		if value, found := syscall.Getenv(envVar); found {
-			f.Value.Set(value)
-			f.HasBeenSet = true
-			break
-		}
-	}
-	eachName(f, func(name string) {
-		set.Var(&f.Value, name, f.Usage)
-	})
-	return nil
-}
-
-// For cli.RequiredFlag:
-
-func (f *DirectoryFlag) IsRequired() bool { return f.Required }
-
-// For cli.VisibleFlag:
-
-func (f *DirectoryFlag) IsVisible() bool { return !f.Hidden }
-
-// For cli.CategorizableFlag:
-
-func (f *DirectoryFlag) GetCategory() string { return f.Category }
-
-// For cli.DocGenerationFlag:
-
-func (f *DirectoryFlag) TakesValue() bool     { return true }
-func (f *DirectoryFlag) GetUsage() string     { return f.Usage }
-func (f *DirectoryFlag) GetValue() string     { return f.Value.String() }
-func (f *DirectoryFlag) GetEnvVars() []string { return f.EnvVars }
-
-func (f *DirectoryFlag) GetDefaultText() string {
-	if f.DefaultText != "" {
-		return f.DefaultText
-	}
-	return f.GetValue()
-}
-
-var (
-	_ cli.Flag              = (*BigFlag)(nil)
-	_ cli.RequiredFlag      = (*BigFlag)(nil)
-	_ cli.VisibleFlag       = (*BigFlag)(nil)
-	_ cli.DocGenerationFlag = (*BigFlag)(nil)
-	_ cli.CategorizableFlag = (*BigFlag)(nil)
-)
-
 // BigFlag is a command line flag that accepts 256 bit big integers in decimal or
 // hexadecimal syntax.
-type BigFlag struct {
-	Name string
+type BigFlag = cli.FlagBase[*big.Int, cli.NoConfig, bigValue]
 
-	Category    string
-	DefaultText string
-	Usage       string
-
-	Required   bool
-	Hidden     bool
-	HasBeenSet bool
-
-	Value        *big.Int
-	defaultValue *big.Int
-
-	Aliases []string
-	EnvVars []string
+// bigValue implements cli.Value and cli.ValueCreator
+type bigValue struct {
+	val *big.Int
 }
 
-// For cli.Flag:
-
-func (f *BigFlag) Names() []string { return append([]string{f.Name}, f.Aliases...) }
-func (f *BigFlag) IsSet() bool     { return f.HasBeenSet }
-func (f *BigFlag) String() string  { return cli.FlagStringer(f) }
-
-func (f *BigFlag) Apply(set *flag.FlagSet) error {
-	// Set default value so that environment wont be able to overwrite it
-	if f.Value != nil {
-		f.defaultValue = new(big.Int).Set(f.Value)
-	}
-	for _, envVar := range f.EnvVars {
-		envVar = strings.TrimSpace(envVar)
-		if value, found := syscall.Getenv(envVar); found {
-			if _, ok := f.Value.SetString(value, 10); !ok {
-				return fmt.Errorf("could not parse %q from environment variable %q for flag %s", value, envVar, f.Name)
-			}
-			f.HasBeenSet = true
-			break
-		}
-	}
-	eachName(f, func(name string) {
-		f.Value = new(big.Int)
-		set.Var((*bigValue)(f.Value), name, f.Usage)
-	})
-	return nil
+func (b bigValue) Create(val *big.Int, p **big.Int, c cli.NoConfig) cli.Value {
+	*p = val
+	return &bigValue{val: val}
 }
 
-// For cli.RequiredFlag:
-
-func (f *BigFlag) IsRequired() bool { return f.Required }
-
-// For cli.VisibleFlag:
-
-func (f *BigFlag) IsVisible() bool { return !f.Hidden }
-
-// For cli.CategorizableFlag:
-
-func (f *BigFlag) GetCategory() string { return f.Category }
-
-// For cli.DocGenerationFlag:
-
-func (f *BigFlag) TakesValue() bool     { return true }
-func (f *BigFlag) GetUsage() string     { return f.Usage }
-func (f *BigFlag) GetValue() string     { return f.Value.String() }
-func (f *BigFlag) GetEnvVars() []string { return f.EnvVars }
-
-func (f *BigFlag) GetDefaultText() string {
-	if f.DefaultText != "" {
-		return f.DefaultText
-	}
-	return f.defaultValue.String()
+func (b bigValue) ToString(v *big.Int) string {
+	return v.String()
 }
-
-// bigValue turns *big.Int into a flag.Value
-type bigValue big.Int
 
 func (b *bigValue) String() string {
 	if b == nil {
 		return ""
 	}
-	return (*big.Int)(b).String()
+	return b.val.String()
+}
+
+func (b *bigValue) Get() any {
+	return b.val
 }
 
 func (b *bigValue) Set(s string) error {
@@ -218,17 +94,17 @@ func (b *bigValue) Set(s string) error {
 	if !ok {
 		return errors.New("invalid integer syntax")
 	}
-	*b = (bigValue)(*intVal)
+	b.val = intVal
 	return nil
 }
 
 // GlobalBig returns the value of a BigFlag from the global flag set.
-func GlobalBig(ctx *cli.Context, name string) *big.Int {
+func GlobalBig(ctx *cli.Command, name string) *big.Int {
 	val := ctx.Generic(name)
 	if val == nil {
 		return nil
 	}
-	return (*big.Int)(val.(*bigValue))
+	return val.Get().(*big.Int)
 }
 
 // Expands a file path

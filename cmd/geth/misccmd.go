@@ -17,13 +17,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/internal/version"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -68,7 +69,7 @@ and displays information about any security vulnerabilities that affect the curr
 	}
 )
 
-func printVersion(ctx *cli.Context) error {
+func printVersion(_ context.Context, ctx *cli.Command) error {
 	git, _ := version.VCS()
 
 	fmt.Println(strings.Title(clientIdentifier))
@@ -87,7 +88,7 @@ func printVersion(ctx *cli.Context) error {
 	return nil
 }
 
-func license(_ *cli.Context) error {
+func license(_ context.Context, _ *cli.Command) error {
 	fmt.Println(`Geth is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or

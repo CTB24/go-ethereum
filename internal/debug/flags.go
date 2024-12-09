@@ -17,15 +17,17 @@
 package debug
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	_ "net/http/pprof"
 
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
@@ -33,112 +35,158 @@ import (
 	"github.com/ethereum/go-ethereum/metrics/exp"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
+	globalVerbosity        = int64(3)
+	globalVmodule          string
+	globalLogFormat        = "terminal"
+	globalLogJSONUsed      bool
+	globalLogFile          string
+	globalLogRotateEnabled bool
+	globalLogMaxSize       = uint64(100)
+	globalLogMaxAge        = uint64(30)
+	globalLogMaxBackups    = uint64(10)
+	globalLogCompress      = false
+	globalPprofEnabled     = false
+	globalPprofAddr        = "127.0.0.1"
+	globalPprofPort        = uint64(6060)
+	globalBlockprofileRate = int64(-1)
+	globalCPUProfileFile   string
+	globalGoTraceFile      string
+)
+
+var (
+	globalLogJSON bool
+)
+
+var (
 	verbosityFlag = &cli.IntFlag{
-		Name:     "verbosity",
-		Usage:    "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail",
-		Value:    3,
-		Category: flags.LoggingCategory,
+		Name:        "verbosity",
+		Usage:       "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail",
+		Destination: &globalVerbosity,
+		Value:       globalVerbosity,
+		Category:    flags.LoggingCategory,
 	}
 	logVmoduleFlag = &cli.StringFlag{
-		Name:     "log.vmodule",
-		Usage:    "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
-		Value:    "",
+		Name:        "log.vmodule",
+		Usage:       "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
+		Destination: &globalVmodule,
+		Value:       globalVmodule,
+		Category:    flags.LoggingCategory,
+	}
+	logFormatFlag = &cli.StringFlag{
+		Name:        "log.format",
+		Usage:       "Log format to use (json|logfmt|terminal)",
+		Destination: &globalLogFormat,
+		Value:       globalLogFormat,
+		Category:    flags.LoggingCategory,
+	}
+	logFileFlag = &cli.StringFlag{
+		Name:        "log.file",
+		Usage:       "Write logs to a file",
+		Destination: &globalLogFile,
+		Category:    flags.LoggingCategory,
+	}
+	logRotateFlag = &cli.BoolFlag{
+		Name:        "log.rotate",
+		Usage:       "Enables log file rotation",
+		Destination: &globalLogRotateEnabled,
+		Category:    flags.LoggingCategory,
+	}
+	logMaxSizeMBsFlag = &cli.UintFlag{
+		Name:        "log.maxsize",
+		Usage:       "Maximum size in MBs of a single log file",
+		Destination: &globalLogMaxSize,
+		Value:       globalLogMaxSize,
+		Category:    flags.LoggingCategory,
+	}
+	logMaxBackupsFlag = &cli.UintFlag{
+		Name:        "log.maxbackups",
+		Usage:       "Maximum number of log files to retain",
+		Destination: &globalLogMaxBackups,
+		Value:       globalLogMaxBackups,
+		Category:    flags.LoggingCategory,
+	}
+	logMaxAgeFlag = &cli.UintFlag{
+		Name:        "log.maxage",
+		Usage:       "Maximum number of days to retain a log file",
+		Destination: &globalLogMaxAge,
+		Value:       globalLogMaxAge,
+		Category:    flags.LoggingCategory,
+	}
+	logCompressFlag = &cli.BoolFlag{
+		Name:        "log.compress",
+		Usage:       "Compress the log files",
+		Destination: &globalLogCompress,
+		Value:       globalLogCompress,
+		Category:    flags.LoggingCategory,
+	}
+	pprofFlag = &cli.BoolFlag{
+		Name:        "pprof",
+		Usage:       "Enable the pprof HTTP server",
+		Destination: &globalPprofEnabled,
+		Category:    flags.LoggingCategory,
+	}
+	pprofPortFlag = &cli.UintFlag{
+		Name:        "pprof.port",
+		Usage:       "pprof HTTP server listening port",
+		Destination: &globalPprofPort,
+		Value:       globalPprofPort,
+		Category:    flags.LoggingCategory,
+	}
+	pprofAddrFlag = &cli.StringFlag{
+		Name:        "pprof.addr",
+		Usage:       "pprof HTTP server listening interface",
+		Destination: &globalPprofAddr,
+		Value:       globalPprofAddr,
+		Category:    flags.LoggingCategory,
+	}
+	memprofilerateFlag = &cli.IntFlag{
+		Name:  "pprof.memprofilerate",
+		Usage: "Turn on memory profiling with the given rate",
+		Action: func(ctx context.Context, cmd *cli.Command, value int64) error {
+			runtime.MemProfileRate = int(value)
+			return nil
+		},
 		Category: flags.LoggingCategory,
 	}
+	blockprofilerateFlag = &cli.IntFlag{
+		Name:        "pprof.blockprofilerate",
+		Usage:       "Turn on block profiling with the given rate",
+		Destination: &globalBlockprofileRate,
+		Category:    flags.LoggingCategory,
+	}
+	cpuprofileFlag = &cli.StringFlag{
+		Name:        "pprof.cpuprofile",
+		Usage:       "Write CPU profile to the given file",
+		Destination: &globalCPUProfileFile,
+		Category:    flags.LoggingCategory,
+	}
+	traceFlag = &cli.StringFlag{
+		Name:        "go-execution-trace",
+		Usage:       "Write Go execution trace to the given file",
+		Destination: &globalGoTraceFile,
+		Category:    flags.LoggingCategory,
+	}
+)
+
+// Deprecated flags.
+var (
 	vmoduleFlag = &cli.StringFlag{
-		Name:     "vmodule",
-		Usage:    "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
-		Value:    "",
-		Hidden:   true,
-		Category: flags.LoggingCategory,
+		Name:        "vmodule",
+		Usage:       "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
+		Destination: &globalVmodule,
+		Hidden:      true, // deprecated, don't show in help
+		Category:    flags.DeprecatedCategory,
 	}
 	logjsonFlag = &cli.BoolFlag{
 		Name:     "log.json",
 		Usage:    "Format logs with JSON",
-		Hidden:   true,
-		Category: flags.LoggingCategory,
-	}
-	logFormatFlag = &cli.StringFlag{
-		Name:     "log.format",
-		Usage:    "Log format to use (json|logfmt|terminal)",
-		Category: flags.LoggingCategory,
-	}
-	logFileFlag = &cli.StringFlag{
-		Name:     "log.file",
-		Usage:    "Write logs to a file",
-		Category: flags.LoggingCategory,
-	}
-	logRotateFlag = &cli.BoolFlag{
-		Name:     "log.rotate",
-		Usage:    "Enables log file rotation",
-		Category: flags.LoggingCategory,
-	}
-	logMaxSizeMBsFlag = &cli.IntFlag{
-		Name:     "log.maxsize",
-		Usage:    "Maximum size in MBs of a single log file",
-		Value:    100,
-		Category: flags.LoggingCategory,
-	}
-	logMaxBackupsFlag = &cli.IntFlag{
-		Name:     "log.maxbackups",
-		Usage:    "Maximum number of log files to retain",
-		Value:    10,
-		Category: flags.LoggingCategory,
-	}
-	logMaxAgeFlag = &cli.IntFlag{
-		Name:     "log.maxage",
-		Usage:    "Maximum number of days to retain a log file",
-		Value:    30,
-		Category: flags.LoggingCategory,
-	}
-	logCompressFlag = &cli.BoolFlag{
-		Name:     "log.compress",
-		Usage:    "Compress the log files",
-		Value:    false,
-		Category: flags.LoggingCategory,
-	}
-	pprofFlag = &cli.BoolFlag{
-		Name:     "pprof",
-		Usage:    "Enable the pprof HTTP server",
-		Category: flags.LoggingCategory,
-	}
-	pprofPortFlag = &cli.IntFlag{
-		Name:     "pprof.port",
-		Usage:    "pprof HTTP server listening port",
-		Value:    6060,
-		Category: flags.LoggingCategory,
-	}
-	pprofAddrFlag = &cli.StringFlag{
-		Name:     "pprof.addr",
-		Usage:    "pprof HTTP server listening interface",
-		Value:    "127.0.0.1",
-		Category: flags.LoggingCategory,
-	}
-	memprofilerateFlag = &cli.IntFlag{
-		Name:     "pprof.memprofilerate",
-		Usage:    "Turn on memory profiling with the given rate",
-		Value:    runtime.MemProfileRate,
-		Category: flags.LoggingCategory,
-	}
-	blockprofilerateFlag = &cli.IntFlag{
-		Name:     "pprof.blockprofilerate",
-		Usage:    "Turn on block profiling with the given rate",
-		Category: flags.LoggingCategory,
-	}
-	cpuprofileFlag = &cli.StringFlag{
-		Name:     "pprof.cpuprofile",
-		Usage:    "Write CPU profile to the given file",
-		Category: flags.LoggingCategory,
-	}
-	traceFlag = &cli.StringFlag{
-		Name:     "go-execution-trace",
-		Usage:    "Write Go execution trace to the given file",
-		Category: flags.LoggingCategory,
+		Hidden:   true, // deprecated, don't show in help
+		Category: flags.DeprecatedCategory,
 	}
 )
 
@@ -175,65 +223,60 @@ func init() {
 
 // Setup initializes profiling and logging based on the CLI flags.
 // It should be called as early as possible in the program.
-func Setup(ctx *cli.Context) error {
+func Setup(cmd *cli.Command) error {
 	var (
 		handler        slog.Handler
 		terminalOutput = io.Writer(os.Stderr)
 		output         io.Writer
-		logFmtFlag     = ctx.String(logFormatFlag.Name)
 	)
-	var (
-		logFile  = ctx.String(logFileFlag.Name)
-		rotation = ctx.Bool(logRotateFlag.Name)
-	)
-	if len(logFile) > 0 {
-		if err := validateLogLocation(filepath.Dir(logFile)); err != nil {
+	if len(globalLogFile) > 0 {
+		if err := validateLogLocation(filepath.Dir(globalLogFile)); err != nil {
 			return fmt.Errorf("failed to initiatilize file logger: %v", err)
 		}
 	}
-	context := []interface{}{"rotate", rotation}
-	if len(logFmtFlag) > 0 {
-		context = append(context, "format", logFmtFlag)
-	} else {
-		context = append(context, "format", "terminal")
-	}
-	if rotation {
+	context := []any{"format", globalLogFormat, "rotate", globalLogRotateEnabled}
+
+	if globalLogRotateEnabled {
 		// Lumberjack uses <processname>-lumberjack.log in is.TempDir() if empty.
 		// so typically /tmp/geth-lumberjack.log on linux
-		if len(logFile) > 0 {
-			context = append(context, "location", logFile)
+		if len(globalLogFile) > 0 {
+			context = append(context, "location", globalLogFile)
 		} else {
 			context = append(context, "location", filepath.Join(os.TempDir(), "geth-lumberjack.log"))
 		}
 		logOutputFile = &lumberjack.Logger{
-			Filename:   logFile,
-			MaxSize:    ctx.Int(logMaxSizeMBsFlag.Name),
-			MaxBackups: ctx.Int(logMaxBackupsFlag.Name),
-			MaxAge:     ctx.Int(logMaxAgeFlag.Name),
-			Compress:   ctx.Bool(logCompressFlag.Name),
+			Filename:   globalLogFile,
+			MaxSize:    int(globalLogMaxSize),
+			MaxBackups: int(globalLogMaxBackups),
+			MaxAge:     int(globalLogMaxAge),
+			Compress:   globalLogCompress,
 		}
 		output = io.MultiWriter(terminalOutput, logOutputFile)
-	} else if logFile != "" {
+	} else if globalLogFile != "" {
 		var err error
-		if logOutputFile, err = os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
+		if logOutputFile, err = os.OpenFile(globalLogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
 			return err
 		}
 		output = io.MultiWriter(logOutputFile, terminalOutput)
-		context = append(context, "location", logFile)
+		context = append(context, "location", globalLogFile)
 	} else {
 		output = terminalOutput
 	}
 
+	var deprecatedLogJSONUsed bool
+	if cmd.IsSet(logjsonFlag.Name) {
+		deprecatedLogJSONUsed = true
+		if cmd.Bool(logjsonFlag.Name) {
+			globalLogFormat = "json"
+		}
+	}
+
 	switch {
-	case ctx.Bool(logjsonFlag.Name):
-		// Retain backwards compatibility with `--log.json` flag if `--log.format` not set
-		defer log.Warn("The flag '--log.json' is deprecated, please use '--log.format=json' instead")
+	case globalLogFormat == "json":
 		handler = log.JSONHandler(output)
-	case logFmtFlag == "json":
-		handler = log.JSONHandler(output)
-	case logFmtFlag == "logfmt":
+	case globalLogFormat == "logfmt":
 		handler = log.LogfmtHandler(output)
-	case logFmtFlag == "", logFmtFlag == "terminal":
+	case globalLogFormat == "", globalLogFormat == "terminal":
 		useColor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
 		if useColor {
 			terminalOutput = colorable.NewColorableStderr()
@@ -246,59 +289,51 @@ func Setup(ctx *cli.Context) error {
 		handler = log.NewTerminalHandler(output, useColor)
 	default:
 		// Unknown log format specified
-		return fmt.Errorf("unknown log format: %v", ctx.String(logFormatFlag.Name))
+		return fmt.Errorf("unknown log format: %v", globalLogFormat)
 	}
-
 	glogger = log.NewGlogHandler(handler)
 
 	// logging
-	verbosity := log.FromLegacyLevel(ctx.Int(verbosityFlag.Name))
+	verbosity := log.FromLegacyLevel(int(globalVerbosity))
 	glogger.Verbosity(verbosity)
-	vmodule := ctx.String(logVmoduleFlag.Name)
-	if vmodule == "" {
-		// Retain backwards compatibility with `--vmodule` flag if `--log.vmodule` not set
-		vmodule = ctx.String(vmoduleFlag.Name)
-		if vmodule != "" {
-			defer log.Warn("The flag '--vmodule' is deprecated, please use '--log.vmodule' instead")
-		}
+	if globalVmodule != "" {
+		glogger.Vmodule(globalVmodule)
 	}
-	glogger.Vmodule(vmodule)
-
 	log.SetDefault(log.NewLogger(glogger))
 
-	// profiling, tracing
-	runtime.MemProfileRate = memprofilerateFlag.Value
-	if ctx.IsSet(memprofilerateFlag.Name) {
-		runtime.MemProfileRate = ctx.Int(memprofilerateFlag.Name)
+	// Print deprecation notices. This needs to be done after logging is initialized.
+	if deprecatedLogJSONUsed {
+		log.Warn("Command-line flag --log.json is deprecated. Please use --log.format=json instead.")
+	}
+	if cmd.IsSet(vmoduleFlag.Name) {
+		log.Warn("Command-line flag --vmodule is deprecated. Please use --log.vmodule instead.")
 	}
 
-	blockProfileRate := ctx.Int(blockprofilerateFlag.Name)
-	Handler.SetBlockProfileRate(blockProfileRate)
-
-	if traceFile := ctx.String(traceFlag.Name); traceFile != "" {
-		if err := Handler.StartGoTrace(traceFile); err != nil {
+	// profiling, tracing
+	if globalBlockprofileRate >= 0 {
+		Handler.SetBlockProfileRate(int(globalBlockprofileRate))
+	}
+	if globalGoTraceFile != "" {
+		if err := Handler.StartGoTrace(globalGoTraceFile); err != nil {
 			return err
 		}
 	}
-
-	if cpuFile := ctx.String(cpuprofileFlag.Name); cpuFile != "" {
-		if err := Handler.StartCPUProfile(cpuFile); err != nil {
+	if globalCPUProfileFile != "" {
+		if err := Handler.StartCPUProfile(globalCPUProfileFile); err != nil {
 			return err
 		}
 	}
 
 	// pprof server
-	if ctx.Bool(pprofFlag.Name) {
-		listenHost := ctx.String(pprofAddrFlag.Name)
-
-		port := ctx.Int(pprofPortFlag.Name)
-
-		address := net.JoinHostPort(listenHost, fmt.Sprintf("%d", port))
+	if globalPprofEnabled {
+		address := net.JoinHostPort(globalPprofAddr, fmt.Sprintf("%d", globalPprofPort))
 		// This context value ("metrics.addr") represents the utils.MetricsHTTPFlag.Name.
 		// It cannot be imported because it will cause a cyclical dependency.
-		StartPProf(address, !ctx.IsSet("metrics.addr"))
+		//
+		// TODO(fjl): move this to package metrics setup
+		StartPProf(address, !cmd.IsSet("metrics.addr"))
 	}
-	if len(logFile) > 0 || rotation {
+	if len(globalLogFile) > 0 || globalLogRotateEnabled {
 		log.Info("Logging configured", context...)
 	}
 	return nil

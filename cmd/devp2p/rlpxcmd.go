@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -27,14 +28,14 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	rlpxCommand = &cli.Command{
 		Name:  "rlpx",
 		Usage: "RLPx Commands",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			rlpxPingCommand,
 			rlpxEthTestCommand,
 			rlpxSnapTestCommand,
@@ -75,7 +76,7 @@ var (
 	}
 )
 
-func rlpxPing(ctx *cli.Context) error {
+func rlpxPing(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	tcpEndpoint, ok := n.TCPEndpoint()
 	if !ok {
@@ -115,7 +116,7 @@ func rlpxPing(ctx *cli.Context) error {
 }
 
 // rlpxEthTest runs the eth protocol test suite.
-func rlpxEthTest(ctx *cli.Context) error {
+func rlpxEthTest(_ context.Context, ctx *cli.Command) error {
 	p := cliTestParams(ctx)
 	suite, err := ethtest.NewSuite(p.node, p.chainDir, p.engineAPI, p.jwt)
 	if err != nil {
@@ -125,7 +126,7 @@ func rlpxEthTest(ctx *cli.Context) error {
 }
 
 // rlpxSnapTest runs the snap protocol test suite.
-func rlpxSnapTest(ctx *cli.Context) error {
+func rlpxSnapTest(_ context.Context, ctx *cli.Command) error {
 	p := cliTestParams(ctx)
 	suite, err := ethtest.NewSuite(p.node, p.chainDir, p.engineAPI, p.jwt)
 	if err != nil {
@@ -141,8 +142,8 @@ type testParams struct {
 	chainDir  string
 }
 
-func cliTestParams(ctx *cli.Context) *testParams {
-	nodeStr := ctx.String(testNodeFlag.Name)
+func cliTestParams(cmd *cli.Command) *testParams {
+	nodeStr := cmd.String(testNodeFlag.Name)
 	if nodeStr == "" {
 		exit(fmt.Errorf("missing -%s", testNodeFlag.Name))
 	}
@@ -152,9 +153,9 @@ func cliTestParams(ctx *cli.Context) *testParams {
 	}
 	p := testParams{
 		node:      node,
-		engineAPI: ctx.String(testNodeEngineFlag.Name),
-		jwt:       ctx.String(testNodeJWTFlag.Name),
-		chainDir:  ctx.String(testChainDirFlag.Name),
+		engineAPI: cmd.String(testNodeEngineFlag.Name),
+		jwt:       cmd.String(testNodeJWTFlag.Name),
+		chainDir:  cmd.String(testChainDirFlag.Name),
 	}
 	if p.engineAPI == "" {
 		exit(fmt.Errorf("missing -%s", testNodeEngineFlag.Name))

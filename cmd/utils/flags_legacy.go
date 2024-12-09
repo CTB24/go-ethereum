@@ -17,11 +17,12 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var ShowDeprecated = &cli.Command{
@@ -82,7 +83,7 @@ var (
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated August 2023
-	TxLookupLimitFlag = &cli.Uint64Flag{
+	TxLookupLimitFlag = &cli.UintFlag{
 		Name:     "txlookuplimit",
 		Usage:    "Number of recent blocks to maintain transactions index for (default = about one year, 0 = entire chain) (deprecated, use history.transactions instead)",
 		Value:    ethconfig.Defaults.TransactionHistory,
@@ -173,7 +174,7 @@ var (
 )
 
 // showDeprecated displays deprecated flags that will be soon removed from the codebase.
-func showDeprecated(*cli.Context) error {
+func showDeprecated(_ context.Context, cmd *cli.Command) error {
 	fmt.Println("--------------------------------------------------------------------")
 	fmt.Println("The following flags are deprecated and will be removed in the future!")
 	fmt.Println("--------------------------------------------------------------------")

@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"os"
@@ -26,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type outputGenerate struct {
@@ -61,7 +62,7 @@ If you want to encrypt an existing private key, it can be specified by setting
 		privateKeyFlag,
 		lightKDFFlag,
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(_ context.Context, ctx *cli.Command) error {
 		// Check if keyfile path given and make sure it doesn't already exist.
 		keyfilepath := ctx.Args().First()
 		if keyfilepath == "" {

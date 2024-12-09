@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,7 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/era"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -189,7 +190,7 @@ This command dumps out the state for a given block (or latest, if none provided)
 
 // initGenesis will initialise the given JSON format genesis file and writes it as
 // the zero'd block (i.e. genesis) or will fail hard if it can't succeed.
-func initGenesis(ctx *cli.Context) error {
+func initGenesis(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 1 {
 		utils.Fatalf("need genesis.json file as the only argument")
 	}
@@ -240,7 +241,7 @@ func initGenesis(ctx *cli.Context) error {
 	return nil
 }
 
-func dumpGenesis(ctx *cli.Context) error {
+func dumpGenesis(_ context.Context, ctx *cli.Command) error {
 	// check if there is a testnet preset enabled
 	var genesis *core.Genesis
 	if utils.IsNetworkPreset(ctx) {
@@ -277,7 +278,7 @@ func dumpGenesis(ctx *cli.Context) error {
 	return nil
 }
 
-func importChain(ctx *cli.Context) error {
+func importChain(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -354,7 +355,7 @@ func importChain(ctx *cli.Context) error {
 	return importErr
 }
 
-func exportChain(ctx *cli.Context) error {
+func exportChain(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -392,7 +393,7 @@ func exportChain(ctx *cli.Context) error {
 	return nil
 }
 
-func importHistory(ctx *cli.Context) error {
+func importHistory(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 1 {
 		utils.Fatalf("usage: %s", ctx.Command.ArgsUsage)
 	}
@@ -448,7 +449,7 @@ func importHistory(ctx *cli.Context) error {
 
 // exportHistory exports chain history in Era archives at a specified
 // directory.
-func exportHistory(ctx *cli.Context) error {
+func exportHistory(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 3 {
 		utils.Fatalf("usage: %s", ctx.Command.ArgsUsage)
 	}
@@ -485,7 +486,7 @@ func exportHistory(ctx *cli.Context) error {
 // it is deprecated, and the export function has been removed, but
 // the import function is kept around for the time being so that
 // older file formats can still be imported.
-func importPreimages(ctx *cli.Context) error {
+func importPreimages(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -504,7 +505,7 @@ func importPreimages(ctx *cli.Context) error {
 	return nil
 }
 
-func parseDumpConfig(ctx *cli.Context, db ethdb.Database) (*state.DumpConfig, common.Hash, error) {
+func parseDumpConfig(_ context.Context, ctx *cli.Command, db ethdb.Database) (*state.DumpConfig, common.Hash, error) {
 	var header *types.Header
 	if ctx.NArg() > 1 {
 		return nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
@@ -561,7 +562,7 @@ func parseDumpConfig(ctx *cli.Context, db ethdb.Database) (*state.DumpConfig, co
 	return conf, header.Root, nil
 }
 
-func dump(ctx *cli.Context) error {
+func dump(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 

@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -25,14 +26,14 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/devp2p/internal/v5test"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/p2p/discover"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	discv5Command = &cli.Command{
 		Name:  "discv5",
 		Usage: "Node Discovery v5 tools",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			discv5PingCommand,
 			discv5ResolveCommand,
 			discv5CrawlCommand,
@@ -79,7 +80,7 @@ var (
 	}
 )
 
-func discv5Ping(ctx *cli.Context) error {
+func discv5Ping(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	disc, _ := startV5(ctx)
 	defer disc.Close()
@@ -88,7 +89,7 @@ func discv5Ping(ctx *cli.Context) error {
 	return nil
 }
 
-func discv5Resolve(ctx *cli.Context) error {
+func discv5Resolve(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	disc, _ := startV5(ctx)
 	defer disc.Close()
@@ -97,7 +98,7 @@ func discv5Resolve(ctx *cli.Context) error {
 	return nil
 }
 
-func discv5Crawl(ctx *cli.Context) error {
+func discv5Crawl(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need nodes file as argument")
 	}
@@ -115,13 +116,14 @@ func discv5Crawl(ctx *cli.Context) error {
 		return err
 	}
 	c.revalidateInterval = 10 * time.Minute
-	output := c.run(ctx.Duration(crawlTimeoutFlag.Name), ctx.Int(crawlParallelismFlag.Name))
+	parallelism := int(ctx.Int(crawlParallelismFlag.Name))
+	output := c.run(ctx.Duration(crawlTimeoutFlag.Name), parallelism)
 	writeNodesJSON(nodesFile, output)
 	return nil
 }
 
 // discv5Test runs the protocol test suite.
-func discv5Test(ctx *cli.Context) error {
+func discv5Test(_ context.Context, ctx *cli.Command) error {
 	suite := &v5test.Suite{
 		Dest:    getNodeArg(ctx),
 		Listen1: ctx.String(testListen1Flag.Name),
@@ -130,7 +132,7 @@ func discv5Test(ctx *cli.Context) error {
 	return runTests(ctx, suite.AllTests())
 }
 
-func discv5Listen(ctx *cli.Context) error {
+func discv5Listen(_ context.Context, ctx *cli.Command) error {
 	disc, _ := startV5(ctx)
 	defer disc.Close()
 
@@ -139,9 +141,9 @@ func discv5Listen(ctx *cli.Context) error {
 }
 
 // startV5 starts an ephemeral discovery v5 node.
-func startV5(ctx *cli.Context) (*discover.UDPv5, discover.Config) {
-	ln, config := makeDiscoveryConfig(ctx)
-	socket := listen(ctx, ln)
+func startV5(cmd *cli.Command) (*discover.UDPv5, discover.Config) {
+	ln, config := makeDiscoveryConfig(cmd)
+	socket := listen(cmd, ln)
 	disc, err := discover.ListenV5(socket, ln, config)
 	if err != nil {
 		exit(err)

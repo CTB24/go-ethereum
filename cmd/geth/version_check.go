@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/jedisct1/go-minisign"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var gethPubKeys []string = []string{
@@ -54,7 +55,7 @@ type vulnJson struct {
 	CVE         string
 }
 
-func versionCheck(ctx *cli.Context) error {
+func versionCheck(_ context.Context, ctx *cli.Command) error {
 	url := ctx.String(VersionCheckUrlFlag.Name)
 	version := ctx.String(VersionCheckVersionFlag.Name)
 	log.Info("Checking vulnerabilities", "version", version, "url", url)

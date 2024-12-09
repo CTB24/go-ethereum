@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -42,7 +43,7 @@ import (
 	_ "github.com/ethereum/go-ethereum/eth/tracers/live"
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -258,7 +259,7 @@ func init() {
 	)
 	flags.AutoEnvVars(app.Flags, "GETH")
 
-	app.Before = func(ctx *cli.Context) error {
+	app.Before = func(_ context.Context, ctx *cli.Command) error {
 		maxprocs.Set() // Automatically set GOMAXPROCS to match Linux container CPU quota.
 		flags.MigrateGlobalFlags(ctx)
 		if err := debug.Setup(ctx); err != nil {
@@ -267,7 +268,7 @@ func init() {
 		flags.CheckEnvVars(ctx, app.Flags, "GETH")
 		return nil
 	}
-	app.After = func(ctx *cli.Context) error {
+	app.After = func(_ context.Context, ctx *cli.Command) error {
 		debug.Exit()
 		prompt.Stdin.Close() // Resets terminal mode.
 		return nil
@@ -283,7 +284,7 @@ func main() {
 
 // prepare manipulates memory cache allowance and setups metric system.
 // This function should be called before launching devp2p stack.
-func prepare(ctx *cli.Context) {
+func prepare(_ context.Context, ctx *cli.Command) {
 	// If we're running a known preset, log it for convenience.
 	switch {
 	case ctx.IsSet(utils.SepoliaFlag.Name):
@@ -329,7 +330,7 @@ func prepare(ctx *cli.Context) {
 // geth is the main entry point into the system if no special subcommand is run.
 // It creates a default node based on the command line arguments and runs it in
 // blocking mode, waiting for it to be shut down.
-func geth(ctx *cli.Context) error {
+func geth(_ context.Context, ctx *cli.Command) error {
 	if args := ctx.Args().Slice(); len(args) > 0 {
 		return fmt.Errorf("invalid command: %q", args[0])
 	}
@@ -345,7 +346,7 @@ func geth(ctx *cli.Context) error {
 
 // startNode boots up the system node and all registered protocols, after which
 // it starts the RPC/IPC interfaces and the miner.
-func startNode(ctx *cli.Context, stack *node.Node, isConsole bool) {
+func startNode(_ context.Context, ctx *cli.Command, stack *node.Node, isConsole bool) {
 	// Start up the node itself
 	utils.StartNode(ctx, stack, isConsole)
 

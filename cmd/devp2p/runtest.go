@@ -23,7 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/internal/utesting"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -76,18 +76,18 @@ var (
 	}
 )
 
-func runTests(ctx *cli.Context, tests []utesting.Test) error {
+func runTests(cmd *cli.Command, tests []utesting.Test) error {
 	// Filter test cases.
-	if ctx.IsSet(testPatternFlag.Name) {
-		tests = utesting.MatchTests(tests, ctx.String(testPatternFlag.Name))
+	if cmd.IsSet(testPatternFlag.Name) {
+		tests = utesting.MatchTests(tests, cmd.String(testPatternFlag.Name))
 	}
 	// Disable logging unless explicitly enabled.
-	if !ctx.IsSet("verbosity") && !ctx.IsSet("vmodule") {
+	if !cmd.IsSet("verbosity") && !cmd.IsSet("vmodule") {
 		log.SetDefault(log.NewLogger(log.DiscardHandler()))
 	}
 	// Run the tests.
 	var run = utesting.RunTests
-	if ctx.Bool(testTAPFlag.Name) {
+	if cmd.Bool(testTAPFlag.Name) {
 		run = utesting.RunTAP
 	}
 	results := run(tests, os.Stdout)

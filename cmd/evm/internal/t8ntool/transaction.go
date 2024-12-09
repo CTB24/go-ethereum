@@ -17,6 +17,7 @@
 package t8ntool
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,7 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/tests"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type result struct {
@@ -63,7 +64,7 @@ func (r *result) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func Transaction(ctx *cli.Context) error {
+func Transaction(_ context.Context, ctx *cli.Command) error {
 	var (
 		err error
 	)

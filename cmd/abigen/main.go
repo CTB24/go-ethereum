@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -92,7 +93,7 @@ func init() {
 	app.Action = abigen
 }
 
-func abigen(c *cli.Context) error {
+func abigen(_ context.Context, c *cli.Command) error {
 	utils.CheckExclusive(c, abiFlag, jsonFlag) // Only one source can be selected.
 
 	if c.String(pkgFlag.Name) == "" {

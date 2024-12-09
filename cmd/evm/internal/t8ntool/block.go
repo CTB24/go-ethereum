@@ -17,6 +17,7 @@
 package t8ntool
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
@@ -31,7 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 //go:generate go run github.com/fjl/gencodec -type header -field-override headerMarshaling -out gen_header.go
@@ -213,7 +214,7 @@ func (i *bbInput) sealClique(block *types.Block) (*types.Block, error) {
 }
 
 // BuildBlock constructs a block from the given inputs.
-func BuildBlock(ctx *cli.Context) error {
+func BuildBlock(_ context.Context, ctx *cli.Command) error {
 	baseDir, err := createBasedir(ctx)
 	if err != nil {
 		return NewError(ErrorIO, fmt.Errorf("failed creating output basedir: %v", err))
@@ -230,7 +231,7 @@ func BuildBlock(ctx *cli.Context) error {
 	return dispatchBlock(ctx, baseDir, block)
 }
 
-func readInput(ctx *cli.Context) (*bbInput, error) {
+func readInput(ctx *cli.Command) (*bbInput, error) {
 	var (
 		headerStr      = ctx.String(InputHeaderFlag.Name)
 		ommersStr      = ctx.String(InputOmmersFlag.Name)
@@ -310,7 +311,7 @@ func readInput(ctx *cli.Context) (*bbInput, error) {
 
 // dispatchBlock writes the output data to either stderr or stdout, or to the specified
 // files
-func dispatchBlock(ctx *cli.Context, baseDir string, block *types.Block) error {
+func dispatchBlock(ctx *cli.Command, baseDir string, block *types.Block) error {
 	raw, _ := rlp.EncodeToBytes(block)
 	type blockInfo struct {
 		Rlp  hexutil.Bytes `json:"rlp"`

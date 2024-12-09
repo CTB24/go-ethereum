@@ -16,7 +16,7 @@
 
 package flags
 
-import "github.com/urfave/cli/v2"
+import "github.com/urfave/cli/v3"
 
 const (
 	EthCategory        = "ETHEREUM"

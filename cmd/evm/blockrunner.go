@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/tests"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/maps"
 )
 
@@ -44,7 +44,7 @@ var blockTestCommand = &cli.Command{
 	}, traceFlags),
 }
 
-func blockTestCmd(ctx *cli.Context) error {
+func blockTestCmd(ctx *cli.Command) error {
 	path := ctx.Args().First()
 	if len(path) == 0 {
 		return errors.New("path argument required")
@@ -64,7 +64,7 @@ func blockTestCmd(ctx *cli.Context) error {
 	return nil
 }
 
-func runBlockTest(ctx *cli.Context, fname string) ([]testResult, error) {
+func runBlockTest(ctx *cli.Command, fname string) ([]testResult, error) {
 	src, err := os.ReadFile(fname)
 	if err != nil {
 		return nil, err

@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var app = flags.NewApp("go-ethereum era tool")
@@ -106,7 +107,7 @@ func main() {
 }
 
 // block prints the specified block from an era1 store.
-func block(ctx *cli.Context) error {
+func block(_ context.Context, ctx *cli.Command) error {
 	num, err := strconv.ParseUint(ctx.Args().First(), 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid block number: %w", err)
@@ -132,7 +133,7 @@ func block(ctx *cli.Context) error {
 }
 
 // info prints some high-level information about the era1 file.
-func info(ctx *cli.Context) error {
+func info(_ context.Context, ctx *cli.Command) error {
 	epoch, err := strconv.ParseUint(ctx.Args().First(), 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid epoch number: %w", err)
@@ -164,7 +165,7 @@ func info(ctx *cli.Context) error {
 }
 
 // open opens an era1 file at a certain epoch.
-func open(ctx *cli.Context, epoch uint64) (*era.Era, error) {
+func open(_ context.Context, ctx *cli.Command, epoch uint64) (*era.Era, error) {
 	var (
 		dir     = ctx.String(dirFlag.Name)
 		network = ctx.String(networkFlag.Name)
@@ -181,7 +182,7 @@ func open(ctx *cli.Context, epoch uint64) (*era.Era, error) {
 
 // verify checks each era1 file in a directory to ensure it is well-formed and
 // that the accumulator matches the expected value.
-func verify(ctx *cli.Context) error {
+func verify(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 1 {
 		return errors.New("missing accumulators file")
 	}

@@ -33,7 +33,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -49,12 +49,12 @@ var (
 	route53AccessKeyFlag = &cli.StringFlag{
 		Name:    "access-key-id",
 		Usage:   "AWS Access Key ID",
-		EnvVars: []string{"AWS_ACCESS_KEY_ID"},
+		Sources: cli.EnvVars("AWS_ACCESS_KEY_ID"),
 	}
 	route53AccessSecretFlag = &cli.StringFlag{
 		Name:    "access-key-secret",
 		Usage:   "AWS Access Key Secret",
-		EnvVars: []string{"AWS_SECRET_ACCESS_KEY"},
+		Sources: cli.EnvVars("AWS_SECRET_ACCESS_KEY"),
 	}
 	route53ZoneIDFlag = &cli.StringFlag{
 		Name:  "zone-id",
@@ -78,9 +78,9 @@ type recordSet struct {
 }
 
 // newRoute53Client sets up a Route53 API client from command line flags.
-func newRoute53Client(ctx *cli.Context) *route53Client {
-	akey := ctx.String(route53AccessKeyFlag.Name)
-	asec := ctx.String(route53AccessSecretFlag.Name)
+func newRoute53Client(cmd *cli.Command) *route53Client {
+	akey := cmd.String(route53AccessKeyFlag.Name)
+	asec := cmd.String(route53AccessSecretFlag.Name)
 	if akey == "" || asec == "" {
 		exit(errors.New("need Route53 Access Key ID and secret to proceed"))
 	}
@@ -89,10 +89,10 @@ func newRoute53Client(ctx *cli.Context) *route53Client {
 	if err != nil {
 		exit(fmt.Errorf("can't initialize AWS configuration: %v", err))
 	}
-	cfg.Region = ctx.String(route53RegionFlag.Name)
+	cfg.Region = cmd.String(route53RegionFlag.Name)
 	return &route53Client{
 		api:    route53.NewFromConfig(cfg),
-		zoneID: ctx.String(route53ZoneIDFlag.Name),
+		zoneID: cmd.String(route53ZoneIDFlag.Name),
 	}
 }
 

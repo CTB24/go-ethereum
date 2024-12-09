@@ -29,7 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
@@ -52,11 +52,11 @@ func main() {
 	},
 		debug.Flags,
 	)
-	app.Before = func(ctx *cli.Context) error {
+	app.Before = func(_ context.Context, ctx *cli.Command) error {
 		flags.MigrateGlobalFlags(ctx)
 		return debug.Setup(ctx)
 	}
-	app.After = func(ctx *cli.Context) error {
+	app.After = func(_ context.Context, ctx *cli.Command) error {
 		debug.Exit()
 		return nil
 	}
@@ -68,7 +68,7 @@ func main() {
 	}
 }
 
-func sync(ctx *cli.Context) error {
+func sync(_ context.Context, ctx *cli.Command) error {
 	// set up blsync
 	client := blsync.NewClient(utils.MakeBeaconLightConfig(ctx))
 	client.SetEngineRPC(makeRPCClient(ctx))
@@ -80,7 +80,7 @@ func sync(ctx *cli.Context) error {
 	return nil
 }
 
-func makeRPCClient(ctx *cli.Context) *rpc.Client {
+func makeRPCClient(_ context.Context, ctx *cli.Command) *rpc.Client {
 	if !ctx.IsSet(utils.BlsyncApiFlag.Name) {
 		log.Warn("No engine API target specified, performing a dry run")
 		return nil

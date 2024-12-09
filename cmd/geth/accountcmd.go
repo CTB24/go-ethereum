@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -27,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -191,7 +192,7 @@ nodes.
 )
 
 // makeAccountManager creates an account manager with backends
-func makeAccountManager(ctx *cli.Context) *accounts.Manager {
+func makeAccountManager(_ context.Context, ctx *cli.Command) *accounts.Manager {
 	cfg := loadBaseConfig(ctx)
 	am := accounts.NewManager(nil)
 	keydir, isEphemeral, err := cfg.Node.GetKeyStoreDir()
@@ -208,7 +209,7 @@ func makeAccountManager(ctx *cli.Context) *accounts.Manager {
 	return am
 }
 
-func accountList(ctx *cli.Context) error {
+func accountList(_ context.Context, ctx *cli.Command) error {
 	am := makeAccountManager(ctx)
 	var index int
 	for _, wallet := range am.Wallets() {
@@ -240,7 +241,7 @@ func readPasswordFromFile(path string) (string, bool) {
 }
 
 // accountCreate creates a new account into the keystore defined by the CLI flags.
-func accountCreate(ctx *cli.Context) error {
+func accountCreate(_ context.Context, ctx *cli.Command) error {
 	cfg := loadBaseConfig(ctx)
 	keydir, isEphemeral, err := cfg.Node.GetKeyStoreDir()
 	if err != nil {
@@ -277,7 +278,7 @@ func accountCreate(ctx *cli.Context) error {
 
 // accountUpdate transitions an account from a previous format to the current
 // one, also providing the possibility to change the pass-phrase.
-func accountUpdate(ctx *cli.Context) error {
+func accountUpdate(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() == 0 {
 		utils.Fatalf("No accounts specified to update")
 	}
@@ -311,7 +312,7 @@ func accountUpdate(ctx *cli.Context) error {
 	return nil
 }
 
-func importWallet(ctx *cli.Context) error {
+func importWallet(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 1 {
 		utils.Fatalf("keyfile must be given as the only argument")
 	}
@@ -339,7 +340,7 @@ func importWallet(ctx *cli.Context) error {
 	return nil
 }
 
-func accountImport(ctx *cli.Context) error {
+func accountImport(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() != 1 {
 		utils.Fatalf("keyfile must be given as the only argument")
 	}

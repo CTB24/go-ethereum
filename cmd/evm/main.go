@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -29,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 
 	// Force-load the tracer engines to trigger registration
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
@@ -213,11 +214,11 @@ func init() {
 		eofParseCommand,
 		eofDumpCommand,
 	}
-	app.Before = func(ctx *cli.Context) error {
+	app.Before = func(_ context.Context, ctx *cli.Command) error {
 		flags.MigrateGlobalFlags(ctx)
 		return debug.Setup(ctx)
 	}
-	app.After = func(ctx *cli.Context) error {
+	app.After = func(_ context.Context, ctx *cli.Command) error {
 		debug.Exit()
 		return nil
 	}
@@ -231,7 +232,7 @@ func main() {
 }
 
 // tracerFromFlags parses the cli flags and returns the specified tracer.
-func tracerFromFlags(ctx *cli.Context) *tracing.Hooks {
+func tracerFromFlags(ctx *cli.Command) *tracing.Hooks {
 	config := &logger.Config{
 		EnableMemory:     !ctx.Bool(TraceDisableMemoryFlag.Name),
 		DisableStack:     ctx.Bool(TraceDisableStackFlag.Name),

@@ -23,13 +23,13 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // getPassphrase obtains a passphrase given by the user.  It first checks the
 // --passfile command line flag and ultimately prompts the user for a
 // passphrase.
-func getPassphrase(ctx *cli.Context, confirmation bool) string {
+func getPassphrase(ctx *cli.Command, confirmation bool) string {
 	// Look for the --passwordfile flag.
 	passphraseFile := ctx.String(passphraseFlag.Name)
 	if passphraseFile != "" {

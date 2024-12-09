@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -26,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type outputSign struct {
@@ -52,7 +53,7 @@ To sign a message contained in a file, use the --msgfile flag.
 		jsonFlag,
 		msgfileFlag,
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(_ context.Context, ctx *cli.Command) error {
 		message := getMessage(ctx, 1)
 
 		// Load the keyfile.
@@ -100,7 +101,7 @@ It is possible to refer to a file containing the message.`,
 		jsonFlag,
 		msgfileFlag,
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(_ context.Context, ctx *cli.Command) error {
 		addressStr := ctx.Args().First()
 		signatureHex := ctx.Args().Get(1)
 		message := getMessage(ctx, 2)
@@ -142,7 +143,7 @@ It is possible to refer to a file containing the message.`,
 	},
 }
 
-func getMessage(ctx *cli.Context, msgarg int) []byte {
+func getMessage(ctx *cli.Command, msgarg int) []byte {
 	if file := ctx.String(msgfileFlag.Name); file != "" {
 		if ctx.NArg() > msgarg {
 			utils.Fatalf("Can't use --msgfile and message argument at the same time.")

@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -43,7 +44,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var runCommand = &cli.Command{
@@ -196,7 +197,7 @@ func timedExec(bench bool, execFunc func() ([]byte, uint64, error)) ([]byte, exe
 	return output, stats, err
 }
 
-func runCmd(ctx *cli.Context) error {
+func runCmd(_ context.Context, ctx *cli.Command) error {
 	var (
 		tracer      *tracing.Hooks
 		prestate    *state.StateDB

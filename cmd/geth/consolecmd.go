@@ -17,13 +17,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/console"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -67,7 +68,7 @@ JavaScript API. See https://geth.ethereum.org/docs/interacting-with-geth/javascr
 
 // localConsole starts a new geth node, attaching a JavaScript console to it at the
 // same time.
-func localConsole(ctx *cli.Context) error {
+func localConsole(_ context.Context, ctx *cli.Command) error {
 	// Create and start the node based on the CLI flags
 	prepare(ctx)
 	stack := makeFullNode(ctx)
@@ -109,7 +110,7 @@ func localConsole(ctx *cli.Context) error {
 
 // remoteConsole will connect to a remote geth instance, attaching a JavaScript
 // console to it.
-func remoteConsole(ctx *cli.Context) error {
+func remoteConsole(_ context.Context, ctx *cli.Command) error {
 	if ctx.Args().Len() > 1 {
 		utils.Fatalf("invalid command-line: too many arguments")
 	}
@@ -149,7 +150,7 @@ func remoteConsole(ctx *cli.Context) error {
 // ephemeralConsole starts a new geth node, attaches an ephemeral JavaScript
 // console to it, executes each of the files specified as arguments and tears
 // everything down.
-func ephemeralConsole(ctx *cli.Context) error {
+func ephemeralConsole(_ context.Context, ctx *cli.Command) error {
 	var b strings.Builder
 	for _, file := range ctx.Args().Slice() {
 		b.WriteString(fmt.Sprintf("loadScript('%s');", file))

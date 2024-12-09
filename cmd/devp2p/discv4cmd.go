@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -34,14 +35,14 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	discv4Command = &cli.Command{
 		Name:  "discv4",
 		Usage: "Node Discovery v4 tools",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			discv4PingCommand,
 			discv4RequestRecordCommand,
 			discv4ResolveCommand,
@@ -91,7 +92,10 @@ var (
 		Name:   "crawl",
 		Usage:  "Updates a nodes.json file with random nodes found in the DHT",
 		Action: discv4Crawl,
-		Flags:  slices.Concat(discoveryNodeFlags, []cli.Flag{crawlTimeoutFlag, crawlParallelismFlag}),
+		Flags: slices.Concat(discoveryNodeFlags, []cli.Flag{
+			crawlTimeoutFlag,
+			crawlParallelismFlag,
+		}),
 	}
 	discv4TestCommand = &cli.Command{
 		Name:   "test",
@@ -141,7 +145,7 @@ var (
 	remoteEnodeFlag = &cli.StringFlag{
 		Name:    "remote",
 		Usage:   "Enode of the remote node under test",
-		EnvVars: []string{"REMOTE_ENODE"},
+		Sources: cli.EnvVars("REMOTE_ENODE"),
 	}
 	httpAddrFlag = &cli.StringFlag{
 		Name:  "rpc",
@@ -157,7 +161,7 @@ var discoveryNodeFlags = []cli.Flag{
 	extAddrFlag,
 }
 
-func discv4Ping(ctx *cli.Context) error {
+func discv4Ping(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	disc, _ := startV4(ctx)
 	defer disc.Close()
@@ -170,7 +174,9 @@ func discv4Ping(ctx *cli.Context) error {
 	return nil
 }
 
-func discv4Listen(ctx *cli.Context) error {
+func discv4Listen(_ context.Context, ctx *cli.Command) error {
+	// debug.Setup(ctx)
+
 	disc, _ := startV4(ctx)
 	defer disc.Close()
 
@@ -191,7 +197,7 @@ func discv4Listen(ctx *cli.Context) error {
 	return httpsrv.ListenAndServe()
 }
 
-func discv4RequestRecord(ctx *cli.Context) error {
+func discv4RequestRecord(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	disc, _ := startV4(ctx)
 	defer disc.Close()
@@ -204,7 +210,7 @@ func discv4RequestRecord(ctx *cli.Context) error {
 	return nil
 }
 
-func discv4Resolve(ctx *cli.Context) error {
+func discv4Resolve(_ context.Context, ctx *cli.Command) error {
 	n := getNodeArg(ctx)
 	disc, _ := startV4(ctx)
 	defer disc.Close()
@@ -213,7 +219,7 @@ func discv4Resolve(ctx *cli.Context) error {
 	return nil
 }
 
-func discv4ResolveJSON(ctx *cli.Context) error {
+func discv4ResolveJSON(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need nodes file as argument")
 	}
@@ -246,7 +252,7 @@ func discv4ResolveJSON(ctx *cli.Context) error {
 	return nil
 }
 
-func discv4Crawl(ctx *cli.Context) error {
+func discv4Crawl(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need nodes file as argument")
 	}
@@ -264,13 +270,14 @@ func discv4Crawl(ctx *cli.Context) error {
 		return err
 	}
 	c.revalidateInterval = 10 * time.Minute
-	output := c.run(ctx.Duration(crawlTimeoutFlag.Name), ctx.Int(crawlParallelismFlag.Name))
+	parallelism := int(ctx.Int(crawlParallelismFlag.Name))
+	output := c.run(ctx.Duration(crawlTimeoutFlag.Name), parallelism)
 	writeNodesJSON(nodesFile, output)
 	return nil
 }
 
 // discv4Test runs the protocol test suite.
-func discv4Test(ctx *cli.Context) error {
+func discv4Test(_ context.Context, ctx *cli.Command) error {
 	// Configure test package globals.
 	if !ctx.IsSet(remoteEnodeFlag.Name) {
 		return fmt.Errorf("missing -%v", remoteEnodeFlag.Name)
@@ -282,9 +289,9 @@ func discv4Test(ctx *cli.Context) error {
 }
 
 // startV4 starts an ephemeral discovery V4 node.
-func startV4(ctx *cli.Context) (*discover.UDPv4, discover.Config) {
-	ln, config := makeDiscoveryConfig(ctx)
-	socket := listen(ctx, ln)
+func startV4(cmd *cli.Command) (*discover.UDPv4, discover.Config) {
+	ln, config := makeDiscoveryConfig(cmd)
+	socket := listen(cmd, ln)
 	disc, err := discover.ListenV4(socket, ln, config)
 	if err != nil {
 		exit(err)
@@ -292,11 +299,11 @@ func startV4(ctx *cli.Context) (*discover.UDPv4, discover.Config) {
 	return disc, config
 }
 
-func makeDiscoveryConfig(ctx *cli.Context) (*enode.LocalNode, discover.Config) {
+func makeDiscoveryConfig(cmd *cli.Command) (*enode.LocalNode, discover.Config) {
 	var cfg discover.Config
 
-	if ctx.IsSet(nodekeyFlag.Name) {
-		key, err := crypto.HexToECDSA(ctx.String(nodekeyFlag.Name))
+	if cmd.IsSet(nodekeyFlag.Name) {
+		key, err := crypto.HexToECDSA(cmd.String(nodekeyFlag.Name))
 		if err != nil {
 			exit(fmt.Errorf("-%s: %v", nodekeyFlag.Name, err))
 		}
@@ -305,15 +312,15 @@ func makeDiscoveryConfig(ctx *cli.Context) (*enode.LocalNode, discover.Config) {
 		cfg.PrivateKey, _ = crypto.GenerateKey()
 	}
 
-	if commandHasFlag(ctx, bootnodesFlag) {
-		bn, err := parseBootnodes(ctx)
+	if commandHasFlag(cmd, bootnodesFlag) {
+		bn, err := parseBootnodes(cmd)
 		if err != nil {
 			exit(err)
 		}
 		cfg.Bootnodes = bn
 	}
 
-	dbpath := ctx.String(nodedbFlag.Name)
+	dbpath := cmd.String(nodedbFlag.Name)
 	db, err := enode.OpenDB(dbpath)
 	if err != nil {
 		exit(err)
@@ -342,8 +349,8 @@ func parseExtAddr(spec string) (ip net.IP, port int, ok bool) {
 	return ip, port, true
 }
 
-func listen(ctx *cli.Context, ln *enode.LocalNode) *net.UDPConn {
-	addr := ctx.String(listenAddrFlag.Name)
+func listen(cmd *cli.Command, ln *enode.LocalNode) *net.UDPConn {
+	addr := cmd.String(listenAddrFlag.Name)
 	if addr == "" {
 		addr = "0.0.0.0:0"
 	}
@@ -365,7 +372,7 @@ func listen(ctx *cli.Context, ln *enode.LocalNode) *net.UDPConn {
 	// If an ENR endpoint is set explicitly on the command-line, override
 	// the information from the listening address. Note this is careful not
 	// to set the UDP port if the external address doesn't have it.
-	extAddr := ctx.String(extAddrFlag.Name)
+	extAddr := cmd.String(extAddrFlag.Name)
 	if extAddr != "" {
 		ip, port, ok := parseExtAddr(extAddr)
 		if !ok {
@@ -380,10 +387,10 @@ func listen(ctx *cli.Context, ln *enode.LocalNode) *net.UDPConn {
 	return usocket
 }
 
-func parseBootnodes(ctx *cli.Context) ([]*enode.Node, error) {
+func parseBootnodes(cmd *cli.Command) ([]*enode.Node, error) {
 	s := params.MainnetBootnodes
-	if ctx.IsSet(bootnodesFlag.Name) {
-		input := ctx.String(bootnodesFlag.Name)
+	if cmd.IsSet(bootnodesFlag.Name) {
+		input := cmd.String(bootnodesFlag.Name)
 		if input == "" {
 			return nil, nil
 		}

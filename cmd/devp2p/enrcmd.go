@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -31,7 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var fileFlag = &cli.StringFlag{Name: "file"}
@@ -45,7 +46,7 @@ var enrdumpCommand = &cli.Command{
 	},
 }
 
-func enrdump(ctx *cli.Context) error {
+func enrdump(_ context.Context, ctx *cli.Command) error {
 	var source string
 	if file := ctx.String(fileFlag.Name); file != "" {
 		if ctx.NArg() != 0 {

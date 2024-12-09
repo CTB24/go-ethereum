@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -24,14 +25,14 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	keyCommand = &cli.Command{
 		Name:  "key",
 		Usage: "Operations on node keys",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			keyGenerateCommand,
 			keyToIDCommand,
 			keyToNodeCommand,
@@ -85,7 +86,7 @@ var (
 	}
 )
 
-func genkey(ctx *cli.Context) error {
+func genkey(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return errors.New("need key file as argument")
 	}
@@ -98,7 +99,7 @@ func genkey(ctx *cli.Context) error {
 	return crypto.SaveECDSA(file, key)
 }
 
-func keyToID(ctx *cli.Context) error {
+func keyToID(_ context.Context, ctx *cli.Command) error {
 	n, err := makeRecord(ctx)
 	if err != nil {
 		return err
@@ -107,7 +108,7 @@ func keyToID(ctx *cli.Context) error {
 	return nil
 }
 
-func keyToURL(ctx *cli.Context) error {
+func keyToURL(_ context.Context, ctx *cli.Command) error {
 	n, err := makeRecord(ctx)
 	if err != nil {
 		return err
@@ -116,7 +117,7 @@ func keyToURL(ctx *cli.Context) error {
 	return nil
 }
 
-func keyToRecord(ctx *cli.Context) error {
+func keyToRecord(_ context.Context, ctx *cli.Command) error {
 	n, err := makeRecord(ctx)
 	if err != nil {
 		return err
@@ -125,16 +126,16 @@ func keyToRecord(ctx *cli.Context) error {
 	return nil
 }
 
-func makeRecord(ctx *cli.Context) (*enode.Node, error) {
-	if ctx.NArg() != 1 {
+func makeRecord(cmd *cli.Command) (*enode.Node, error) {
+	if cmd.NArg() != 1 {
 		return nil, errors.New("need key file as argument")
 	}
 
 	var (
-		file = ctx.Args().Get(0)
-		host = ctx.String(hostFlag.Name)
-		tcp  = ctx.Int(tcpPortFlag.Name)
-		udp  = ctx.Int(udpPortFlag.Name)
+		file = cmd.Args().Get(0)
+		host = cmd.String(hostFlag.Name)
+		tcp  = cmd.Int(tcpPortFlag.Name)
+		udp  = cmd.Int(udpPortFlag.Name)
 	)
 	key, err := crypto.LoadECDSA(file)
 	if err != nil {

@@ -17,30 +17,28 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var app = flags.NewApp("go-ethereum devp2p tool")
 
 func init() {
 	app.Flags = append(app.Flags, debug.Flags...)
-	app.Before = func(ctx *cli.Context) error {
-		flags.MigrateGlobalFlags(ctx)
-		return debug.Setup(ctx)
+	app.Before = func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+		// err := error(nil)
+		err := debug.Setup(cmd)
+		return ctx, err
 	}
-	app.After = func(ctx *cli.Context) error {
+	app.After = func(ctx context.Context, cmd *cli.Command) error {
 		debug.Exit()
 		return nil
-	}
-	app.CommandNotFound = func(ctx *cli.Context, cmd string) {
-		fmt.Fprintf(os.Stderr, "No such command: %s\n", cmd)
-		os.Exit(1)
 	}
 
 	// Add subcommands.
@@ -56,23 +54,21 @@ func init() {
 }
 
 func main() {
-	exit(app.Run(os.Args))
+	exit(app.Run(context.Background(), os.Args))
 }
 
 // commandHasFlag returns true if the current command supports the given flag.
-func commandHasFlag(ctx *cli.Context, flag cli.Flag) bool {
+func commandHasFlag(cmd *cli.Command, flag cli.Flag) bool {
 	names := flag.Names()
 	set := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		set[name] = struct{}{}
 	}
-	for _, ctx := range ctx.Lineage() {
-		if ctx.Command != nil {
-			for _, f := range ctx.Command.Flags {
-				for _, name := range f.Names() {
-					if _, ok := set[name]; ok {
-						return true
-					}
+	for _, cmd := range cmd.Lineage() {
+		for _, f := range cmd.Flags {
+			for _, name := range f.Names() {
+				if _, ok := set[name]; ok {
+					return true
 				}
 			}
 		}
@@ -81,18 +77,18 @@ func commandHasFlag(ctx *cli.Context, flag cli.Flag) bool {
 }
 
 // getNodeArg handles the common case of a single node descriptor argument.
-func getNodeArg(ctx *cli.Context) *enode.Node {
-	if ctx.NArg() < 1 {
+func getNodeArg(cmd *cli.Command) *enode.Node {
+	if cmd.NArg() < 1 {
 		exit("missing node as command-line argument")
 	}
-	n, err := parseNode(ctx.Args().First())
+	n, err := parseNode(cmd.Args().First())
 	if err != nil {
 		exit(err)
 	}
 	return n
 }
 
-func exit(err interface{}) {
+func exit(err any) {
 	if err == nil {
 		os.Exit(0)
 	}

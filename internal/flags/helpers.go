@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/mattn/go-isatty"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // usecolor defines whether the CLI help should use colored output or normal dumb
@@ -34,108 +34,23 @@ import (
 var usecolor = (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())) && os.Getenv("TERM") != "dumb"
 
 // NewApp creates an app with sane defaults.
-func NewApp(usage string) *cli.App {
+func NewApp(usage string) *cli.Command {
 	git, _ := version.VCS()
-	app := cli.NewApp()
-	app.EnableBashCompletion = true
-	app.Version = version.WithCommit(git.Commit, git.Date)
-	app.Usage = usage
-	app.Copyright = "Copyright 2013-2025 The go-ethereum Authors"
-	app.Before = func(ctx *cli.Context) error {
-		MigrateGlobalFlags(ctx)
-		return nil
+	return &cli.Command{
+		CustomRootCommandHelpTemplate: rootCommandTemplate(),
+		EnableShellCompletion:         true,
+		Version:                       version.WithCommit(git.Commit, git.Date),
+		Usage:                         usage,
+		Copyright:                     "Copyright 2013-2025 The go-ethereum Authors",
 	}
-	return app
 }
 
-var migrationApplied = map[*cli.Command]struct{}{}
-
-// MigrateGlobalFlags makes all global flag values available in the
-// context. This should be called as early as possible in app.Before.
-//
-// Example:
-//
-//	geth account new --keystore /tmp/mykeystore --lightkdf
-//
-// is equivalent after calling this method with:
-//
-//	geth --keystore /tmp/mykeystore --lightkdf account new
-//
-// i.e. in the subcommand Action function of 'account new', ctx.Bool("lightkdf)
-// will return true even if --lightkdf is set as a global option.
-//
-// This function may become unnecessary when https://github.com/urfave/cli/pull/1245 is merged.
-func MigrateGlobalFlags(ctx *cli.Context) {
-	var iterate func(cs []*cli.Command, fn func(*cli.Command))
-	iterate = func(cs []*cli.Command, fn func(*cli.Command)) {
-		for _, cmd := range cs {
-			if _, ok := migrationApplied[cmd]; ok {
-				continue
-			}
-			migrationApplied[cmd] = struct{}{}
-			fn(cmd)
-			iterate(cmd.Subcommands, fn)
-		}
-	}
-
-	// This iterates over all commands and wraps their action function.
-	iterate(ctx.App.Commands, func(cmd *cli.Command) {
-		if cmd.Action == nil {
-			return
-		}
-
-		action := cmd.Action
-		cmd.Action = func(ctx *cli.Context) error {
-			doMigrateFlags(ctx)
-			return action(ctx)
-		}
-	})
-}
-
-func doMigrateFlags(ctx *cli.Context) {
-	// Figure out if there are any aliases of commands. If there are, we want
-	// to ignore them when iterating over the flags.
-	aliases := make(map[string]bool)
-	for _, fl := range ctx.Command.Flags {
-		for _, alias := range fl.Names()[1:] {
-			aliases[alias] = true
-		}
-	}
-	for _, name := range ctx.FlagNames() {
-		for _, parent := range ctx.Lineage()[1:] {
-			if parent.IsSet(name) {
-				// When iterating across the lineage, we will be served both
-				// the 'canon' and alias formats of all commands. In most cases,
-				// it's fine to set it in the ctx multiple times (one for each
-				// name), however, the Slice-flags are not fine.
-				// The slice-flags accumulate, so if we set it once as
-				// "foo" and once as alias "F", then both will be present in the slice.
-				if _, isAlias := aliases[name]; isAlias {
-					continue
-				}
-				// If it is a string-slice, we need to set it as
-				// "alfa, beta, gamma" instead of "[alfa beta gamma]", in order
-				// for the backing StringSlice to parse it properly.
-				if result := parent.StringSlice(name); len(result) > 0 {
-					ctx.Set(name, strings.Join(result, ","))
-				} else {
-					ctx.Set(name, parent.String(name))
-				}
-				break
-			}
-		}
-	}
+func rootCommandTemplate() string {
+	tpl := regexp.MustCompile("[A-Z ]+:").ReplaceAllString(cli.RootCommandHelpTemplate, "\u001B[33m$0\u001B[0m")
+	return strings.ReplaceAll(tpl, "{{template \"visibleFlagCategoryTemplate\" .}}", "{{range .VisibleFlagCategories}}\n   {{if .Name}}\u001B[33m{{.Name}}\u001B[0m\n\n   {{end}}{{$flglen := len .Flags}}{{range $i, $e := .Flags}}{{if eq (subtract $flglen $i) 1}}{{$e}}\n{{else}}{{$e}}\n   {{end}}{{end}}{{end}}")
 }
 
 func init() {
-	if usecolor {
-		// Annotate all help categories with colors
-		cli.AppHelpTemplate = regexp.MustCompile("[A-Z ]+:").ReplaceAllString(cli.AppHelpTemplate, "\u001B[33m$0\u001B[0m")
-
-		// Annotate flag categories with colors (private template, so need to
-		// copy-paste the entire thing here...)
-		cli.AppHelpTemplate = strings.ReplaceAll(cli.AppHelpTemplate, "{{template \"visibleFlagCategoryTemplate\" .}}", "{{range .VisibleFlagCategories}}\n   {{if .Name}}\u001B[33m{{.Name}}\u001B[0m\n\n   {{end}}{{$flglen := len .Flags}}{{range $i, $e := .Flags}}{{if eq (subtract $flglen $i) 1}}{{$e}}\n{{else}}{{$e}}\n   {{end}}{{end}}{{end}}")
-	}
 	cli.FlagStringer = FlagString
 }
 
@@ -151,7 +66,7 @@ func FlagString(f cli.Flag) string {
 		placeholder = "value"
 	}
 
-	namesText := cli.FlagNamePrefixer(df.Names(), placeholder)
+	namesText := cli.FlagNamePrefixer(f.Names(), placeholder)
 
 	defaultValueString := ""
 	if s := df.GetDefaultText(); s != "" {
@@ -224,40 +139,27 @@ func wordWrap(s string, width int) string {
 func AutoEnvVars(flags []cli.Flag, prefix string) {
 	for _, flag := range flags {
 		envvar := strings.ToUpper(prefix + "_" + strings.ReplaceAll(strings.ReplaceAll(flag.Names()[0], ".", "_"), "-", "_"))
+		source := cli.EnvVars(envvar)
 
 		switch flag := flag.(type) {
 		case *cli.StringFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
 		case *cli.StringSliceFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
 		case *cli.BoolFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
 		case *cli.IntFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
-		case *cli.Int64Flag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
-		case *cli.Uint64Flag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
-		case *cli.Float64Flag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
+		case *cli.UintFlag:
+			flag.Sources.Append(source)
+		case *cli.FloatFlag:
+			flag.Sources.Append(source)
 		case *cli.DurationFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
-		case *cli.PathFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
 		case *BigFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
-
+			flag.Sources.Append(source)
 		case *DirectoryFlag:
-			flag.EnvVars = append(flag.EnvVars, envvar)
+			flag.Sources.Append(source)
 		}
 	}
 }
@@ -265,7 +167,7 @@ func AutoEnvVars(flags []cli.Flag, prefix string) {
 // CheckEnvVars iterates over all the environment variables and checks if any of
 // them look like a CLI flag but is not consumed. This can be used to detect old
 // or mistyped names.
-func CheckEnvVars(ctx *cli.Context, flags []cli.Flag, prefix string) {
+func CheckEnvVars(ctx *cli.Command, flags []cli.Flag, prefix string) {
 	known := make(map[string]string)
 	for _, flag := range flags {
 		docflag, ok := flag.(cli.DocGenerationFlag)

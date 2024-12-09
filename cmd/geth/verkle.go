@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-verkle"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -110,7 +111,7 @@ func checkChildren(root verkle.VerkleNode, resolver verkle.NodeResolverFn) error
 	return nil
 }
 
-func verifyVerkle(ctx *cli.Context) error {
+func verifyVerkle(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -159,7 +160,7 @@ func verifyVerkle(ctx *cli.Context) error {
 	return nil
 }
 
-func expandVerkle(ctx *cli.Context) error {
+func expandVerkle(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 

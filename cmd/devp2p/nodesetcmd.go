@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -30,14 +31,14 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	nodesetCommand = &cli.Command{
 		Name:  "nodeset",
 		Usage: "Node set tools",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			nodesetInfoCommand,
 			nodesetFilterCommand,
 		},
@@ -58,7 +59,7 @@ var (
 	}
 )
 
-func nodesetInfo(ctx *cli.Context) error {
+func nodesetInfo(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need nodes file as argument")
 	}
@@ -97,7 +98,7 @@ func showAttributeCounts(ns nodeSet) {
 	}
 }
 
-func nodesetFilter(ctx *cli.Context) error {
+func nodesetFilter(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		return errors.New("need nodes file as argument")
 	}

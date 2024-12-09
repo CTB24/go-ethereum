@@ -25,14 +25,14 @@ import (
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
 	cloudflareTokenFlag = &cli.StringFlag{
 		Name:    "token",
 		Usage:   "CloudFlare API token",
-		EnvVars: []string{"CLOUDFLARE_API_TOKEN"},
+		Sources: cli.EnvVars("CLOUDFLARE_API_TOKEN"),
 	}
 	cloudflareZoneIDFlag = &cli.StringFlag{
 		Name:  "zoneid",
@@ -46,8 +46,8 @@ type cloudflareClient struct {
 }
 
 // newCloudflareClient sets up a CloudFlare API client from command line flags.
-func newCloudflareClient(ctx *cli.Context) *cloudflareClient {
-	token := ctx.String(cloudflareTokenFlag.Name)
+func newCloudflareClient(cmd *cli.Command) *cloudflareClient {
+	token := cmd.String(cloudflareTokenFlag.Name)
 	if token == "" {
 		exit(errors.New("need cloudflare API token to proceed"))
 	}
@@ -57,7 +57,7 @@ func newCloudflareClient(ctx *cli.Context) *cloudflareClient {
 	}
 	return &cloudflareClient{
 		API:    api,
-		zoneID: ctx.String(cloudflareZoneIDFlag.Name),
+		zoneID: cmd.String(cloudflareZoneIDFlag.Name),
 	}
 }
 

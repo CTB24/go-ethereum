@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,7 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -167,7 +168,7 @@ the expected order for the overlay tree migration.
 
 // Deprecation: this command should be deprecated once the hash-based
 // scheme is deprecated.
-func pruneState(ctx *cli.Context) error {
+func pruneState(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -205,7 +206,7 @@ func pruneState(ctx *cli.Context) error {
 	return nil
 }
 
-func verifyState(ctx *cli.Context) error {
+func verifyState(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -253,7 +254,7 @@ func verifyState(ctx *cli.Context) error {
 
 // checkDanglingStorage iterates the snap storage data, and verifies that all
 // storage also has corresponding account data.
-func checkDanglingStorage(ctx *cli.Context) error {
+func checkDanglingStorage(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -265,7 +266,7 @@ func checkDanglingStorage(ctx *cli.Context) error {
 // traverseState is a helper function used for pruning verification.
 // Basically it just iterates the trie, ensure all nodes and associated
 // contract codes are present.
-func traverseState(ctx *cli.Context) error {
+func traverseState(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -374,7 +375,7 @@ func traverseState(ctx *cli.Context) error {
 // Basically it just iterates the trie, ensure all nodes and associated
 // contract codes are present. It's basically identical to traverseState
 // but it will check each trie node.
-func traverseRawState(ctx *cli.Context) error {
+func traverseRawState(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -537,7 +538,7 @@ func parseRoot(input string) (common.Hash, error) {
 	return h, nil
 }
 
-func dumpState(ctx *cli.Context) error {
+func dumpState(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -620,7 +621,7 @@ func dumpState(ctx *cli.Context) error {
 }
 
 // snapshotExportPreimages dumps the preimage data to a flat file.
-func snapshotExportPreimages(ctx *cli.Context) error {
+func snapshotExportPreimages(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -663,7 +664,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 
 // checkAccount iterates the snap data layers, and looks up the given account
 // across all layers.
-func checkAccount(ctx *cli.Context) error {
+func checkAccount(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return errors.New("need <address|hash> arg")
 	}

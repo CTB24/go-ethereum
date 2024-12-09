@@ -21,6 +21,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -47,7 +48,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -74,7 +75,7 @@ func Fatalf(format string, args ...interface{}) {
 	os.Exit(1)
 }
 
-func StartNode(ctx *cli.Context, stack *node.Node, isConsole bool) {
+func StartNode(_ context.Context, ctx *cli.Command, stack *node.Node, isConsole bool) {
 	if err := stack.Start(); err != nil {
 		Fatalf("Error starting protocol stack: %v", err)
 	}
@@ -85,9 +86,9 @@ func StartNode(ctx *cli.Context, stack *node.Node, isConsole bool) {
 
 		minFreeDiskSpace := 2 * ethconfig.Defaults.TrieDirtyCache // Default 2 * 256Mb
 		if ctx.IsSet(MinFreeDiskSpaceFlag.Name) {
-			minFreeDiskSpace = ctx.Int(MinFreeDiskSpaceFlag.Name)
+			minFreeDiskSpace = int(ctx.Int(MinFreeDiskSpaceFlag.Name))
 		} else if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheGCFlag.Name) {
-			minFreeDiskSpace = 2 * ctx.Int(CacheFlag.Name) * ctx.Int(CacheGCFlag.Name) / 100
+			minFreeDiskSpace = 2 * int(ctx.Int(CacheFlag.Name)) * int(ctx.Int(CacheGCFlag.Name)) / 100
 		}
 		if minFreeDiskSpace > 0 {
 			go monitorFreeDiskSpace(sigc, stack.InstanceDir(), uint64(minFreeDiskSpace)*1024*1024)

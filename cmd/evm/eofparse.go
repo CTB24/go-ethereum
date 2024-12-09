@@ -18,6 +18,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,7 +29,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var jt vm.JumpTable
@@ -68,7 +69,7 @@ var (
 	}
 )
 
-func eofParseAction(ctx *cli.Context) error {
+func eofParseAction(_ context.Context, ctx *cli.Command) error {
 	// If `--test` is set, parse and validate the reference test at the provided path.
 	if ctx.IsSet(refTestFlag.Name) {
 		var (
@@ -190,7 +191,7 @@ func parse(b []byte, isInitCode bool) (*vm.Container, error) {
 	return &c, nil
 }
 
-func eofDumpAction(ctx *cli.Context) error {
+func eofDumpAction(_ context.Context, ctx *cli.Command) error {
 	// If `--hex` is set, parse and validate the hex string argument.
 	if ctx.IsSet(hexFlag.Name) {
 		return eofDump(ctx.String(hexFlag.Name))

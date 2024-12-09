@@ -17,18 +17,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/ethereum/go-ethereum/internal/flags"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
 	defaultKeyfileName = "keyfile.json"
 )
 
-var app *cli.App
+var app *cli.Command
 
 func init() {
 	app = flags.NewApp("Ethereum key manager")
@@ -54,7 +55,7 @@ var (
 )
 
 func main() {
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

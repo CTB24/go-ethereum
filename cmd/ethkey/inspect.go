@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -24,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type outputInspect struct {
@@ -54,7 +55,7 @@ make sure to use this feature with great caution!`,
 		jsonFlag,
 		privateFlag,
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(_ context.Context, ctx *cli.Command) error {
 		keyfilepath := ctx.Args().First()
 
 		// Read key from file.

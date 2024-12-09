@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -42,7 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/olekukonko/tablewriter"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -231,7 +232,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 	}
 )
 
-func removeDB(ctx *cli.Context) error {
+func removeDB(_ context.Context, ctx *cli.Command) error {
 	stack, config := makeConfigNode(ctx)
 
 	// Resolve folder paths.
@@ -281,7 +282,7 @@ func removeFolder(dir string) {
 
 // confirmAndRemoveDB prompts the user for a last confirmation and removes the
 // list of folders if accepted.
-func confirmAndRemoveDB(paths []string, kind string, ctx *cli.Context, removeFlagName string) {
+func confirmAndRemoveDB(_ context.Context, paths []string, kind string, ctx *cli.Command, removeFlagName string) {
 	var (
 		confirm bool
 		err     error
@@ -323,7 +324,7 @@ func confirmAndRemoveDB(paths []string, kind string, ctx *cli.Context, removeFla
 	}
 }
 
-func inspect(ctx *cli.Context) error {
+func inspect(_ context.Context, ctx *cli.Command) error {
 	var (
 		prefix []byte
 		start  []byte
@@ -354,7 +355,7 @@ func inspect(ctx *cli.Context) error {
 	return rawdb.InspectDatabase(db, prefix, start)
 }
 
-func checkStateContent(ctx *cli.Context) error {
+func checkStateContent(_ context.Context, ctx *cli.Command) error {
 	var (
 		prefix []byte
 		start  []byte
@@ -417,7 +418,7 @@ func showDBStats(db ethdb.KeyValueStater) {
 	fmt.Println(stats)
 }
 
-func dbStats(ctx *cli.Context) error {
+func dbStats(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -428,7 +429,7 @@ func dbStats(ctx *cli.Context) error {
 	return nil
 }
 
-func dbCompact(ctx *cli.Context) error {
+func dbCompact(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
@@ -449,7 +450,7 @@ func dbCompact(ctx *cli.Context) error {
 }
 
 // dbGet shows the value of a given database key
-func dbGet(ctx *cli.Context) error {
+func dbGet(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -475,7 +476,7 @@ func dbGet(ctx *cli.Context) error {
 }
 
 // dbDelete deletes a key from the database
-func dbDelete(ctx *cli.Context) error {
+func dbDelete(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 1 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -502,7 +503,7 @@ func dbDelete(ctx *cli.Context) error {
 }
 
 // dbPut overwrite a value in the database
-func dbPut(ctx *cli.Context) error {
+func dbPut(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() != 2 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -536,7 +537,7 @@ func dbPut(ctx *cli.Context) error {
 }
 
 // dbDumpTrie shows the key-value slots of a given storage trie
-func dbDumpTrie(ctx *cli.Context) error {
+func dbDumpTrie(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 3 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -603,7 +604,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 	return it.Err
 }
 
-func freezerInspect(ctx *cli.Context) error {
+func freezerInspect(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 4 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -627,7 +628,7 @@ func freezerInspect(ctx *cli.Context) error {
 	return rawdb.InspectFreezerTable(ancient, freezer, table, start, end)
 }
 
-func importLDBdata(ctx *cli.Context) error {
+func importLDBdata(_ context.Context, ctx *cli.Command) error {
 	start := 0
 	switch ctx.NArg() {
 	case 1:
@@ -724,7 +725,7 @@ var chainExporters = map[string]func(db ethdb.Database) utils.ChainDataIterator{
 	},
 }
 
-func exportChaindata(ctx *cli.Context) error {
+func exportChaindata(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 2 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}
@@ -759,7 +760,7 @@ func exportChaindata(ctx *cli.Context) error {
 	return utils.ExportChaindata(ctx.Args().Get(1), kind, exporter(db), stop)
 }
 
-func showMetaData(ctx *cli.Context) error {
+func showMetaData(_ context.Context, ctx *cli.Command) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 	db := utils.MakeChainDatabase(ctx, stack, true)
@@ -859,7 +860,7 @@ func inspectStorage(db *triedb.Database, start uint64, end uint64, address commo
 	return nil
 }
 
-func inspectHistory(ctx *cli.Context) error {
+func inspectHistory(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() == 0 || ctx.NArg() > 2 {
 		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
 	}

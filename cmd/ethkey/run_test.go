@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -40,7 +41,7 @@ func runEthkey(t *testing.T, args ...string) *testEthkey {
 func TestMain(m *testing.M) {
 	// Run the app if we've been exec'd as "ethkey-test" in runEthkey.
 	reexec.Register("ethkey-test", func() {
-		if err := app.Run(os.Args); err != nil {
+		if err := app.Run(context.Background(), os.Args); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

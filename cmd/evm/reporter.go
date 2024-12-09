@@ -22,7 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -67,7 +67,7 @@ func (r testResult) String() string {
 }
 
 // report prints the after-test summary.
-func report(ctx *cli.Context, results []testResult) {
+func report(ctx *cli.Command, results []testResult) {
 	if ctx.Bool(HumanReadableFlag.Name) {
 		pass := 0
 		for _, r := range results {

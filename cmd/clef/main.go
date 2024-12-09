@@ -56,7 +56,7 @@ import (
 	"github.com/ethereum/go-ethereum/signer/storage"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const legalWarning = `
@@ -306,7 +306,7 @@ func main() {
 	}
 }
 
-func initializeSecrets(c *cli.Context) error {
+func initializeSecrets(_ context.Context, c *cli.Command) error {
 	// Get past the legal message
 	if err := initialize(c); err != nil {
 		return err
@@ -374,7 +374,7 @@ You should treat 'masterseed.json' with utmost secrecy and make a backup of it!
 	return nil
 }
 
-func attestFile(ctx *cli.Context) error {
+func attestFile(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -398,7 +398,7 @@ func attestFile(ctx *cli.Context) error {
 	return nil
 }
 
-func initInternalApi(c *cli.Context) (*core.UIServerAPI, core.UIClientAPI, error) {
+func initInternalApi(_ context.Context, c *cli.Command) (*core.UIServerAPI, core.UIClientAPI, error) {
 	if err := initialize(c); err != nil {
 		return nil, nil, err
 	}
@@ -414,7 +414,7 @@ func initInternalApi(c *cli.Context) (*core.UIServerAPI, core.UIClientAPI, error
 	return internalApi, ui, nil
 }
 
-func setCredential(ctx *cli.Context) error {
+func setCredential(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		utils.Fatalf("This command requires an address to be passed as an argument")
 	}
@@ -444,7 +444,7 @@ func setCredential(ctx *cli.Context) error {
 	return nil
 }
 
-func removeCredential(ctx *cli.Context) error {
+func removeCredential(_ context.Context, ctx *cli.Command) error {
 	if ctx.NArg() < 1 {
 		utils.Fatalf("This command requires an address to be passed as an argument")
 	}
@@ -472,7 +472,7 @@ func removeCredential(ctx *cli.Context) error {
 	return nil
 }
 
-func initialize(c *cli.Context) error {
+func initialize(_ context.Context, c *cli.Command) error {
 	// Set up the logger to print everything
 	logOutput := os.Stdout
 	if c.Bool(stdiouiFlag.Name) {
@@ -498,7 +498,7 @@ func initialize(c *cli.Context) error {
 	return nil
 }
 
-func newAccount(c *cli.Context) error {
+func newAccount(_ context.Context, c *cli.Command) error {
 	internalApi, _, err := initInternalApi(c)
 	if err != nil {
 		return err
@@ -510,7 +510,7 @@ func newAccount(c *cli.Context) error {
 	return err
 }
 
-func listAccounts(c *cli.Context) error {
+func listAccounts(_ context.Context, c *cli.Command) error {
 	internalApi, _, err := initInternalApi(c)
 	if err != nil {
 		return err
@@ -529,7 +529,7 @@ func listAccounts(c *cli.Context) error {
 	return err
 }
 
-func listWallets(c *cli.Context) error {
+func listWallets(_ context.Context, c *cli.Command) error {
 	internalApi, _, err := initInternalApi(c)
 	if err != nil {
 		return err
@@ -550,7 +550,7 @@ func listWallets(c *cli.Context) error {
 }
 
 // accountImport imports a raw hexadecimal private key via CLI.
-func accountImport(c *cli.Context) error {
+func accountImport(_ context.Context, c *cli.Command) error {
 	if c.Args().Len() != 1 {
 		return errors.New("<keyfile> must be given as first argument")
 	}
@@ -622,7 +622,7 @@ func ipcEndpoint(ipcPath, datadir string) string {
 	return ipcPath
 }
 
-func signer(c *cli.Context) error {
+func signer(_ context.Context, c *cli.Command) error {
 	// If we have some unrecognized command, bail out
 	if c.NArg() > 0 {
 		return fmt.Errorf("invalid command: %q", c.Args().First())
@@ -816,7 +816,7 @@ func DefaultConfigDir() string {
 	return ""
 }
 
-func readMasterKey(ctx *cli.Context, ui core.UIClientAPI) ([]byte, error) {
+func readMasterKey(_ context.Context, ctx *cli.Command, ui core.UIClientAPI) ([]byte, error) {
 	var (
 		file      string
 		configDir = ctx.String(configdirFlag.Name)
@@ -1072,7 +1072,7 @@ func decryptSeed(keyjson []byte, auth string) ([]byte, error) {
 }
 
 // GenDoc outputs examples of all structures used in json-rpc communication
-func GenDoc(ctx *cli.Context) error {
+func GenDoc(_ context.Context, ctx *cli.Command) error {
 	var (
 		a    = common.HexToAddress("0xdeadbeef000000000000000000000000deadbeef")
 		b    = common.HexToAddress("0x1111111122222222222233333333334444444444")
