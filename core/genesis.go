@@ -45,6 +45,7 @@ import (
 //go:generate go run github.com/fjl/gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
 
 var errGenesisNoConfig = errors.New("genesis has no chain configuration")
+var errGenesisNoStoredConfig = errors.New("chain configuration missing in database, run geth init")
 
 // Deprecated: use types.Account instead.
 type GenesisAccount = types.Account
@@ -239,6 +240,18 @@ type ChainOverrides struct {
 	OverrideVerkle *uint64
 }
 
+func (o *ChainOverrides) apply(cfg *params.ChainConfig) {
+	if o == nil || cfg == nil {
+		return
+	}
+	if o.OverrideCancun != nil {
+		cfg.CancunTime = o.OverrideCancun
+	}
+	if o.OverrideVerkle != nil {
+		cfg.VerkleTime = o.OverrideVerkle
+	}
+}
+
 // SetupGenesisBlock writes or updates the genesis block in db.
 // The block that will be used is:
 //
@@ -252,55 +265,64 @@ type ChainOverrides struct {
 // error is a *params.ConfigCompatError and the new, unwritten config is returned.
 //
 // The returned chain configuration is never nil.
-func SetupGenesisBlock(db ethdb.Database, triedb *triedb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
-	return SetupGenesisBlockWithOverride(db, triedb, genesis, nil)
+func SetupGenesisBlock(db ethdb.Database, trieConfig *triedb.Config, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
+	return SetupGenesisBlockWithOverride(db, genesis, trieConfig, nil)
 }
 
-func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, genesis *Genesis, overrides *ChainOverrides) (*params.ChainConfig, common.Hash, error) {
+func SetupGenesisBlockWithOverride(db ethdb.Database, genesis *Genesis, trieConfig *triedb.Config, overrides *ChainOverrides) (*params.ChainConfig, common.Hash, error) {
 	if genesis != nil && genesis.Config == nil {
 		return params.AllEthashProtocolChanges, common.Hash{}, errGenesisNoConfig
 	}
-	applyOverrides := func(config *params.ChainConfig) {
-		if config != nil {
-			if overrides != nil && overrides.OverrideCancun != nil {
-				config.CancunTime = overrides.OverrideCancun
-			}
-			if overrides != nil && overrides.OverrideVerkle != nil {
-				config.VerkleTime = overrides.OverrideVerkle
-			}
-		}
-	}
-	// Just commit the new block if there is no stored genesis block.
-	stored := rawdb.ReadCanonicalHash(db, 0)
-	if (stored == common.Hash{}) {
+
+	// Just commit the new block if there is no storedGhash genesis block.
+	storedGhash := rawdb.ReadCanonicalHash(db, 0)
+	if (storedGhash == common.Hash{}) {
 		if genesis == nil {
 			log.Info("Writing default main-net genesis block")
 			genesis = DefaultGenesisBlock()
 		} else {
 			log.Info("Writing custom genesis block")
 		}
-
-		applyOverrides(genesis.Config)
+		overrides.apply(genesis.Config)
 		block, err := genesis.Commit(db, triedb)
 		if err != nil {
 			return genesis.Config, common.Hash{}, err
 		}
 		return genesis.Config, block.Hash(), nil
 	}
-	// The genesis block is present(perhaps in ancient database) while the
-	// state database is not initialized yet. It can happen that the node
-	// is initialized with an external ancient store. Commit genesis state
-	// in this case.
-	header := rawdb.ReadHeader(db, stored, 0)
+
+	// Here, the genesis block is present in database (perhaps in ancient database).
+	// We first need to resolve the chain configuration.
+	newcfg, err := genesis.setupChainConfig(db, storedGhash, overrides)
+	if err != nil {
+		return newcfg, storedGhash, err
+	}
+	// Store the resolved config to genesis. This is to ensure later calls
+	// to Commit, etc. use the resolved fork rules.
+	if genesis != nil {
+		cpy := *genesis
+		cpy.Config = newcfg
+		genesis = &cpy
+	}
+
+	// Create the state database.
+	// Here we enable verkle mode if necessary.
+	trieConfigCpy := *trieConfig
+	trieConfigCpy.IsVerkle = newcfg.IsVerkle(common.Big0, 0)
+	triedb := triedb.NewDatabase(db, &trieConfigCpy)
+	defer triedb.Close()
+
+	// The state database is not initialized yet. It can happen that the node is
+	// initialized with an external ancient store. Commit genesis state in this case.
+	header := rawdb.ReadHeader(db, storedGhash, 0)
 	if header.Root != types.EmptyRootHash && !triedb.Initialized(header.Root) {
 		if genesis == nil {
 			genesis = DefaultGenesisBlock()
 		}
-		applyOverrides(genesis.Config)
 		// Ensure the stored genesis matches with the given one.
 		hash := genesis.ToBlock().Hash()
-		if hash != stored {
-			return genesis.Config, hash, &GenesisMismatchError{stored, hash}
+		if hash != storedGhash {
+			return genesis.Config, hash, &GenesisMismatchError{storedGhash, hash}
 		}
 		block, err := genesis.Commit(db, triedb)
 		if err != nil {
@@ -308,51 +330,55 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 		}
 		return genesis.Config, block.Hash(), nil
 	}
+
 	// Check whether the genesis block is already written.
 	if genesis != nil {
-		applyOverrides(genesis.Config)
+		overrides.apply(genesis.Config)
 		hash := genesis.ToBlock().Hash()
-		if hash != stored {
-			return genesis.Config, hash, &GenesisMismatchError{stored, hash}
+		if hash != storedGhash {
+			return genesis.Config, hash, &GenesisMismatchError{storedGhash, hash}
 		}
 	}
-	// Get the existing chain configuration.
-	newcfg := genesis.configOrDefault(stored)
-	applyOverrides(newcfg)
-	if err := newcfg.CheckConfigForkOrder(); err != nil {
-		return newcfg, common.Hash{}, err
-	}
-	storedcfg := rawdb.ReadChainConfig(db, stored)
-	if storedcfg == nil {
-		log.Warn("Found genesis block without chain config")
-		rawdb.WriteChainConfig(db, stored, newcfg)
-		return newcfg, stored, nil
-	}
+
+	return newcfg, storedGhash, nil
+}
+
+func (genesis *Genesis) setupChainConfig(db ethdb.Database, storedGhash common.Hash, overrides *ChainOverrides) (*params.ChainConfig, error) {
+	storedcfg := rawdb.ReadChainConfig(db, storedGhash)
 	storedData, _ := json.Marshal(storedcfg)
-	// Special case: if a private network is being used (no genesis and also no
-	// mainnet hash in the database), we must not apply the `configOrDefault`
-	// chain config as that would be AllProtocolChanges (applying any new fork
-	// on top of an existing private network genesis block). In that case, only
-	// apply the overrides.
-	if genesis == nil && stored != params.MainnetGenesisHash {
-		newcfg = storedcfg
-		applyOverrides(newcfg)
+	if storedcfg == nil {
+		if genesis == nil {
+			return nil, errGenesisNoStoredConfig
+		}
 	}
-	// Check config compatibility and write the config. Compatibility errors
-	// are returned to the caller unless we're already at block zero.
+
+	newcfg := genesis.configOrDefault(storedGhash)
+	if newcfg == nil {
+		// When starting with genesis == nil, for networks with no known default config,
+		// just use what's in the database.
+		newcfg = storedcfg
+	}
+	overrides.apply(newcfg)
+
+	// Config has been resolved now. Check config compatibility. Compatibility errors are
+	// returned to the caller unless we're already at block zero.
+	if err := newcfg.CheckConfigForkOrder(); err != nil {
+		return newcfg, err
+	}
 	head := rawdb.ReadHeadHeader(db)
 	if head == nil {
-		return newcfg, stored, errors.New("missing head header")
+		return newcfg, errors.New("missing head header")
 	}
 	compatErr := storedcfg.CheckCompatible(newcfg, head.Number.Uint64(), head.Time)
 	if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
-		return newcfg, stored, compatErr
+		return newcfg, compatErr
 	}
-	// Don't overwrite if the old is identical to the new
+
+	// Don't overwrite if the old is identical to the new.
 	if newData, _ := json.Marshal(newcfg); !bytes.Equal(storedData, newData) {
-		rawdb.WriteChainConfig(db, stored, newcfg)
+		rawdb.WriteChainConfig(db, storedGhash, newcfg)
 	}
-	return newcfg, stored, nil
+	return newcfg, nil
 }
 
 // LoadChainConfig loads the stored chain config if it is already present in
@@ -399,7 +425,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	case ghash == params.SepoliaGenesisHash:
 		return params.SepoliaChainConfig
 	default:
-		return params.AllEthashProtocolChanges
+		return nil
 	}
 }
 
