@@ -23,7 +23,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -61,8 +60,7 @@ var (
 		Name:      "removedb",
 		Usage:     "Remove blockchain and state databases",
 		ArgsUsage: "",
-		Flags: slices.Concat(utils.DatabaseFlags,
-			[]cli.Flag{removeStateDataFlag, removeChainDataFlag}),
+		Flags:     []cli.Flag{removeStateDataFlag, removeChainDataFlag},
 		Description: `
 Remove blockchain and state databases`,
 	}
@@ -70,7 +68,7 @@ Remove blockchain and state databases`,
 		Name:      "db",
 		Usage:     "Low level database operations",
 		ArgsUsage: "",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			dbInspectCmd,
 			dbStatCmd,
 			dbCompactCmd,
@@ -87,12 +85,9 @@ Remove blockchain and state databases`,
 		},
 	}
 	dbInspectCmd = &cli.Command{
-		Action:    inspect,
-		Name:      "inspect",
-		ArgsUsage: "<prefix> <start>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      inspect,
+		Name:        "inspect",
+		ArgsUsage:   "<prefix> <start>",
 		Usage:       "Inspect the storage size for each type of data in the database",
 		Description: `This commands iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
 	}
@@ -100,7 +95,6 @@ Remove blockchain and state databases`,
 		Action:    checkStateContent,
 		Name:      "check-state-content",
 		ArgsUsage: "<start (optional)>",
-		Flags:     slices.Concat(utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:     "Verify that state data is cryptographically correct",
 		Description: `This command iterates the entire database for 32-byte keys, looking for rlp-encoded trie nodes.
 For each trie node encountered, it checks that the key corresponds to the keccak256(value). If this is not true, this indicates
@@ -110,31 +104,20 @@ a data corruption.`,
 		Action: dbStats,
 		Name:   "stats",
 		Usage:  "Print leveldb statistics",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
 	}
 	dbCompactCmd = &cli.Command{
 		Action: dbCompact,
 		Name:   "compact",
 		Usage:  "Compact leveldb database. WARNING: May take a very long time",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-			utils.CacheFlag,
-			utils.CacheDatabaseFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command performs a database compaction.
 WARNING: This operation may take a very long time to finish, and may cause database
 corruption if it is aborted during execution'!`,
 	}
 	dbGetCmd = &cli.Command{
-		Action:    dbGet,
-		Name:      "get",
-		Usage:     "Show the value of a database key",
-		ArgsUsage: "<hex-encoded key>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      dbGet,
+		Name:        "get",
+		Usage:       "Show the value of a database key",
+		ArgsUsage:   "<hex-encoded key>",
 		Description: "This command looks up the specified database key from the database.",
 	}
 	dbDeleteCmd = &cli.Command{
@@ -142,9 +125,6 @@ corruption if it is aborted during execution'!`,
 		Name:      "delete",
 		Usage:     "Delete a database key (WARNING: may corrupt your database)",
 		ArgsUsage: "<hex-encoded key>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command deletes the specified database key from the database.
 WARNING: This is a low-level operation which may cause database corruption!`,
 	}
@@ -153,59 +133,41 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Name:      "put",
 		Usage:     "Set the value of a database key (WARNING: may corrupt your database)",
 		ArgsUsage: "<hex-encoded key> <hex-encoded value>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command sets a given database key to the given value.
 WARNING: This is a low-level operation which may cause database corruption!`,
 	}
 	dbGetSlotsCmd = &cli.Command{
-		Action:    dbDumpTrie,
-		Name:      "dumptrie",
-		Usage:     "Show the storage key/values of a given storage trie",
-		ArgsUsage: "<hex-encoded state root> <hex-encoded account hash> <hex-encoded storage trie root> <hex-encoded start (optional)> <int max elements (optional)>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      dbDumpTrie,
+		Name:        "dumptrie",
+		Usage:       "Show the storage key/values of a given storage trie",
+		ArgsUsage:   "<hex-encoded state root> <hex-encoded account hash> <hex-encoded storage trie root> <hex-encoded start (optional)> <int max elements (optional)>",
 		Description: "This command looks up the specified database key from the database.",
 	}
 	dbDumpFreezerIndex = &cli.Command{
-		Action:    freezerInspect,
-		Name:      "freezer-index",
-		Usage:     "Dump out the index of a specific freezer table",
-		ArgsUsage: "<freezer-type> <table-type> <start (int)> <end (int)>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      freezerInspect,
+		Name:        "freezer-index",
+		Usage:       "Dump out the index of a specific freezer table",
+		ArgsUsage:   "<freezer-type> <table-type> <start (int)> <end (int)>",
 		Description: "This command displays information about the freezer index.",
 	}
 	dbImportCmd = &cli.Command{
-		Action:    importLDBdata,
-		Name:      "import",
-		Usage:     "Imports leveldb-data from an exported RLP dump.",
-		ArgsUsage: "<dumpfile> <start (optional)",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      importLDBdata,
+		Name:        "import",
+		Usage:       "Imports leveldb-data from an exported RLP dump.",
+		ArgsUsage:   "<dumpfile> <start (optional)",
 		Description: "The import command imports the specific chain data from an RLP encoded stream.",
 	}
 	dbExportCmd = &cli.Command{
-		Action:    exportChaindata,
-		Name:      "export",
-		Usage:     "Exports the chain data into an RLP dump. If the <dumpfile> has .gz suffix, gzip compression will be used.",
-		ArgsUsage: "<type> <dumpfile>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      exportChaindata,
+		Name:        "export",
+		Usage:       "Exports the chain data into an RLP dump. If the <dumpfile> has .gz suffix, gzip compression will be used.",
+		ArgsUsage:   "<type> <dumpfile>",
 		Description: "Exports the specified chain data to an RLP encoded stream, optionally gzip-compressed.",
 	}
 	dbMetadataCmd = &cli.Command{
-		Action: showMetaData,
-		Name:   "metadata",
-		Usage:  "Shows metadata about the chain status.",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		Action:      showMetaData,
+		Name:        "metadata",
+		Usage:       "Shows metadata about the chain status.",
 		Description: "Shows metadata about the chain status.",
 	}
 	dbInspectHistoryCmd = &cli.Command{
@@ -213,13 +175,12 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Name:      "inspect-history",
 		Usage:     "Inspect the state history within block range",
 		ArgsUsage: "<address> [OPTIONAL <storage-slot>]",
-		Flags: slices.Concat([]cli.Flag{
-			utils.SyncModeFlag,
-			&cli.Uint64Flag{
+		Flags: []cli.Flag{
+			&cli.UintFlag{
 				Name:  "start",
 				Usage: "block number of the range start, zero means earliest history",
 			},
-			&cli.Uint64Flag{
+			&cli.UintFlag{
 				Name:  "end",
 				Usage: "block number of the range end(included), zero means latest history",
 			},
@@ -227,7 +188,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 				Name:  "raw",
 				Usage: "display the decoded raw state value (otherwise shows rlp-encoded value)",
 			},
-		}, utils.NetworkFlags, utils.DatabaseFlags),
+		},
 		Description: "This command queries the history of the account or storage slot within the specified block range",
 	}
 )
@@ -282,7 +243,7 @@ func removeFolder(dir string) {
 
 // confirmAndRemoveDB prompts the user for a last confirmation and removes the
 // list of folders if accepted.
-func confirmAndRemoveDB(_ context.Context, paths []string, kind string, ctx *cli.Command, removeFlagName string) {
+func confirmAndRemoveDB(paths []string, kind string, cmd *cli.Command, removeFlagName string) {
 	var (
 		confirm bool
 		err     error
@@ -292,8 +253,8 @@ func confirmAndRemoveDB(_ context.Context, paths []string, kind string, ctx *cli
 		msg += fmt.Sprintf("\t- %s\n", path)
 	}
 	fmt.Println(msg)
-	if ctx.IsSet(removeFlagName) {
-		confirm = ctx.Bool(removeFlagName)
+	if cmd.IsSet(removeFlagName) {
+		confirm = cmd.Bool(removeFlagName)
 		if confirm {
 			fmt.Printf("Remove '%s'? [y/n] y\n", kind)
 		} else {
@@ -324,56 +285,56 @@ func confirmAndRemoveDB(_ context.Context, paths []string, kind string, ctx *cli
 	}
 }
 
-func inspect(_ context.Context, ctx *cli.Command) error {
+func inspect(_ context.Context, cmd *cli.Command) error {
 	var (
 		prefix []byte
 		start  []byte
 	)
-	if ctx.NArg() > 2 {
-		return fmt.Errorf("max 2 arguments: %v", ctx.Command.ArgsUsage)
+	if cmd.NArg() > 2 {
+		return fmt.Errorf("max 2 arguments: %v", cmd.ArgsUsage)
 	}
-	if ctx.NArg() >= 1 {
-		if d, err := hexutil.Decode(ctx.Args().Get(0)); err != nil {
+	if cmd.NArg() >= 1 {
+		if d, err := hexutil.Decode(cmd.Args().Get(0)); err != nil {
 			return fmt.Errorf("failed to hex-decode 'prefix': %v", err)
 		} else {
 			prefix = d
 		}
 	}
-	if ctx.NArg() >= 2 {
-		if d, err := hexutil.Decode(ctx.Args().Get(1)); err != nil {
+	if cmd.NArg() >= 2 {
+		if d, err := hexutil.Decode(cmd.Args().Get(1)); err != nil {
 			return fmt.Errorf("failed to hex-decode 'start': %v", err)
 		} else {
 			start = d
 		}
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
 
 	return rawdb.InspectDatabase(db, prefix, start)
 }
 
-func checkStateContent(_ context.Context, ctx *cli.Command) error {
+func checkStateContent(_ context.Context, cmd *cli.Command) error {
 	var (
 		prefix []byte
 		start  []byte
 	)
-	if ctx.NArg() > 1 {
-		return fmt.Errorf("max 1 argument: %v", ctx.Command.ArgsUsage)
+	if cmd.NArg() > 1 {
+		return fmt.Errorf("max 1 argument: %v", cmd.ArgsUsage)
 	}
-	if ctx.NArg() > 0 {
-		if d, err := hexutil.Decode(ctx.Args().First()); err != nil {
+	if cmd.NArg() > 0 {
+		if d, err := hexutil.Decode(cmd.Args().First()); err != nil {
 			return fmt.Errorf("failed to hex-decode 'start': %v", err)
 		} else {
 			start = d
 		}
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
 	var (
 		it        = rawdb.NewKeyLengthIterator(db.NewIterator(prefix, start), 32)
@@ -450,17 +411,17 @@ func dbCompact(_ context.Context, ctx *cli.Command) error {
 }
 
 // dbGet shows the value of a given database key
-func dbGet(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() != 1 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func dbGet(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() != 1 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
 
-	key, err := common.ParseHexOrString(ctx.Args().Get(0))
+	key, err := common.ParseHexOrString(cmd.Args().Get(0))
 	if err != nil {
 		log.Info("Could not decode the key", "error", err)
 		return err
@@ -476,17 +437,17 @@ func dbGet(_ context.Context, ctx *cli.Command) error {
 }
 
 // dbDelete deletes a key from the database
-func dbDelete(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() != 1 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func dbDelete(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() != 1 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(cmd, stack, false)
 	defer db.Close()
 
-	key, err := common.ParseHexOrString(ctx.Args().Get(0))
+	key, err := common.ParseHexOrString(cmd.Args().Get(0))
 	if err != nil {
 		log.Info("Could not decode the key", "error", err)
 		return err
@@ -503,14 +464,14 @@ func dbDelete(_ context.Context, ctx *cli.Command) error {
 }
 
 // dbPut overwrite a value in the database
-func dbPut(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() != 2 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func dbPut(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() != 2 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(cmd, stack, false)
 	defer db.Close()
 
 	var (
@@ -519,12 +480,12 @@ func dbPut(_ context.Context, ctx *cli.Command) error {
 		data  []byte
 		err   error
 	)
-	key, err = common.ParseHexOrString(ctx.Args().Get(0))
+	key, err = common.ParseHexOrString(cmd.Args().Get(0))
 	if err != nil {
 		log.Info("Could not decode the key", "error", err)
 		return err
 	}
-	value, err = hexutil.Decode(ctx.Args().Get(1))
+	value, err = hexutil.Decode(cmd.Args().Get(1))
 	if err != nil {
 		log.Info("Could not decode the value", "error", err)
 		return err
@@ -537,17 +498,17 @@ func dbPut(_ context.Context, ctx *cli.Command) error {
 }
 
 // dbDumpTrie shows the key-value slots of a given storage trie
-func dbDumpTrie(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() < 3 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func dbDumpTrie(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 3 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, db, false, true, false)
+	triedb := utils.MakeTrieDatabase(cmd, db, false, true, false)
 	defer triedb.Close()
 
 	var (
@@ -558,26 +519,26 @@ func dbDumpTrie(_ context.Context, ctx *cli.Command) error {
 		max     = int64(-1)
 		err     error
 	)
-	if state, err = hexutil.Decode(ctx.Args().Get(0)); err != nil {
+	if state, err = hexutil.Decode(cmd.Args().Get(0)); err != nil {
 		log.Info("Could not decode the state root", "error", err)
 		return err
 	}
-	if account, err = hexutil.Decode(ctx.Args().Get(1)); err != nil {
+	if account, err = hexutil.Decode(cmd.Args().Get(1)); err != nil {
 		log.Info("Could not decode the account hash", "error", err)
 		return err
 	}
-	if storage, err = hexutil.Decode(ctx.Args().Get(2)); err != nil {
+	if storage, err = hexutil.Decode(cmd.Args().Get(2)); err != nil {
 		log.Info("Could not decode the storage trie root", "error", err)
 		return err
 	}
-	if ctx.NArg() > 3 {
-		if start, err = hexutil.Decode(ctx.Args().Get(3)); err != nil {
+	if cmd.NArg() > 3 {
+		if start, err = hexutil.Decode(cmd.Args().Get(3)); err != nil {
 			log.Info("Could not decode the seek position", "error", err)
 			return err
 		}
 	}
-	if ctx.NArg() > 4 {
-		if max, err = strconv.ParseInt(ctx.Args().Get(4), 10, 64); err != nil {
+	if cmd.NArg() > 4 {
+		if max, err = strconv.ParseInt(cmd.Args().Get(4), 10, 64); err != nil {
 			log.Info("Could not decode the max count", "error", err)
 			return err
 		}
@@ -604,47 +565,47 @@ func dbDumpTrie(_ context.Context, ctx *cli.Command) error {
 	return it.Err
 }
 
-func freezerInspect(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() < 4 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func freezerInspect(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 4 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
 	var (
-		freezer = ctx.Args().Get(0)
-		table   = ctx.Args().Get(1)
+		freezer = cmd.Args().Get(0)
+		table   = cmd.Args().Get(1)
 	)
-	start, err := strconv.ParseInt(ctx.Args().Get(2), 10, 64)
+	start, err := strconv.ParseInt(cmd.Args().Get(2), 10, 64)
 	if err != nil {
 		log.Info("Could not read start-param", "err", err)
 		return err
 	}
-	end, err := strconv.ParseInt(ctx.Args().Get(3), 10, 64)
+	end, err := strconv.ParseInt(cmd.Args().Get(3), 10, 64)
 	if err != nil {
 		log.Info("Could not read count param", "err", err)
 		return err
 	}
-	stack, _ := makeConfigNode(ctx)
-	ancient := stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
+	stack, _ := makeConfigNode(cmd)
+	ancient := stack.ResolveAncient("chaindata", cmd.String(utils.AncientFlag.Name))
 	stack.Close()
 	return rawdb.InspectFreezerTable(ancient, freezer, table, start, end)
 }
 
-func importLDBdata(_ context.Context, ctx *cli.Command) error {
+func importLDBdata(_ context.Context, cmd *cli.Command) error {
 	start := 0
-	switch ctx.NArg() {
+	switch cmd.NArg() {
 	case 1:
 		break
 	case 2:
-		s, err := strconv.Atoi(ctx.Args().Get(1))
+		s, err := strconv.Atoi(cmd.Args().Get(1))
 		if err != nil {
 			return fmt.Errorf("second arg must be an integer: %v", err)
 		}
 		start = s
 	default:
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
 	var (
-		fName     = ctx.Args().Get(0)
-		stack, _  = makeConfigNode(ctx)
+		fName     = cmd.Args().Get(0)
+		stack, _  = makeConfigNode(cmd)
 		interrupt = make(chan os.Signal, 1)
 		stop      = make(chan struct{})
 	)
@@ -658,7 +619,7 @@ func importLDBdata(_ context.Context, ctx *cli.Command) error {
 		}
 		close(stop)
 	}()
-	db := utils.MakeChainDatabase(ctx, stack, false)
+	db := utils.MakeChainDatabase(cmd, stack, false)
 	defer db.Close()
 	return utils.ImportLDBData(db, fName, int64(start), stop)
 }
@@ -725,12 +686,12 @@ var chainExporters = map[string]func(db ethdb.Database) utils.ChainDataIterator{
 	},
 }
 
-func exportChaindata(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() < 2 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func exportChaindata(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() < 2 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
 	// Parse the required chain data type, make sure it's supported.
-	kind := ctx.Args().Get(0)
+	kind := cmd.Args().Get(0)
 	kind = strings.ToLower(strings.Trim(kind, " "))
 	exporter, ok := chainExporters[kind]
 	if !ok {
@@ -741,7 +702,7 @@ func exportChaindata(_ context.Context, ctx *cli.Command) error {
 		return fmt.Errorf("invalid data type %s, supported types: %s", kind, strings.Join(kinds, ", "))
 	}
 	var (
-		stack, _  = makeConfigNode(ctx)
+		stack, _  = makeConfigNode(cmd)
 		interrupt = make(chan os.Signal, 1)
 		stop      = make(chan struct{})
 	)
@@ -755,9 +716,9 @@ func exportChaindata(_ context.Context, ctx *cli.Command) error {
 		}
 		close(stop)
 	}()
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
-	return utils.ExportChaindata(ctx.Args().Get(1), kind, exporter(db), stop)
+	return utils.ExportChaindata(cmd.Args().Get(1), kind, exporter(db), stop)
 }
 
 func showMetaData(_ context.Context, ctx *cli.Command) error {
@@ -860,30 +821,30 @@ func inspectStorage(db *triedb.Database, start uint64, end uint64, address commo
 	return nil
 }
 
-func inspectHistory(_ context.Context, ctx *cli.Command) error {
-	if ctx.NArg() == 0 || ctx.NArg() > 2 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+func inspectHistory(_ context.Context, cmd *cli.Command) error {
+	if cmd.NArg() == 0 || cmd.NArg() > 2 {
+		return fmt.Errorf("required arguments: %v", cmd.ArgsUsage)
 	}
 	var (
 		address common.Address
 		slot    common.Hash
 	)
-	if err := address.UnmarshalText([]byte(ctx.Args().Get(0))); err != nil {
+	if err := address.UnmarshalText([]byte(cmd.Args().Get(0))); err != nil {
 		return err
 	}
-	if ctx.NArg() > 1 {
-		if err := slot.UnmarshalText([]byte(ctx.Args().Get(1))); err != nil {
+	if cmd.NArg() > 1 {
+		if err := slot.UnmarshalText([]byte(cmd.Args().Get(1))); err != nil {
 			return err
 		}
 	}
 	// Load the databases.
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true)
+	db := utils.MakeChainDatabase(cmd, stack, true)
 	defer db.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, db, false, false, false)
+	triedb := utils.MakeTrieDatabase(cmd, db, false, false, false)
 	defer triedb.Close()
 
 	var (
@@ -910,7 +871,7 @@ func inspectHistory(_ context.Context, ctx *cli.Command) error {
 		return *id, nil
 	}
 	// Parse the starting block number for inspection.
-	startNumber := ctx.Uint64("start")
+	startNumber := cmd.Uint("start")
 	if startNumber != 0 {
 		start, err = blockToID(startNumber)
 		if err != nil {
@@ -918,7 +879,7 @@ func inspectHistory(_ context.Context, ctx *cli.Command) error {
 		}
 	}
 	// Parse the ending block number for inspection.
-	endBlock := ctx.Uint64("end")
+	endBlock := cmd.Uint("end")
 	if endBlock != 0 {
 		end, err = blockToID(endBlock)
 		if err != nil {
@@ -927,7 +888,7 @@ func inspectHistory(_ context.Context, ctx *cli.Command) error {
 	}
 	// Inspect the state history.
 	if slot == (common.Hash{}) {
-		return inspectAccount(triedb, start, end, address, ctx.Bool("raw"))
+		return inspectAccount(triedb, start, end, address, cmd.Bool("raw"))
 	}
-	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
+	return inspectStorage(triedb, start, end, address, slot, cmd.Bool("raw"))
 }

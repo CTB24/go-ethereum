@@ -140,7 +140,7 @@ func defaultNodeConfig() node.Config {
 
 // loadBaseConfig loads the gethConfig based on the given command line
 // parameters and config file.
-func loadBaseConfig(_ context.Context, ctx *cli.Command) gethConfig {
+func loadBaseConfig(cmd *cli.Command) gethConfig {
 	// Load defaults.
 	cfg := gethConfig{
 		Eth:     ethconfig.Defaults,
@@ -149,20 +149,20 @@ func loadBaseConfig(_ context.Context, ctx *cli.Command) gethConfig {
 	}
 
 	// Load config file.
-	if file := ctx.String(configFileFlag.Name); file != "" {
+	if file := cmd.String(configFileFlag.Name); file != "" {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
 	}
 
 	// Apply flags.
-	utils.SetNodeConfig(ctx, &cfg.Node)
+	utils.SetNodeConfig(cmd, &cfg.Node)
 	return cfg
 }
 
 // makeConfigNode loads geth configuration and creates a blank node instance.
-func makeConfigNode(_ context.Context, ctx *cli.Command) (*node.Node, gethConfig) {
-	cfg := loadBaseConfig(ctx)
+func makeConfigNode(cmd *cli.Command) (*node.Node, gethConfig) {
+	cfg := loadBaseConfig(cmd)
 	stack, err := node.New(&cfg.Node)
 	if err != nil {
 		utils.Fatalf("Failed to create the protocol stack: %v", err)
@@ -172,24 +172,24 @@ func makeConfigNode(_ context.Context, ctx *cli.Command) (*node.Node, gethConfig
 		utils.Fatalf("Failed to set account manager backends: %v", err)
 	}
 
-	utils.SetEthConfig(ctx, stack, &cfg.Eth)
-	if ctx.IsSet(utils.EthStatsURLFlag.Name) {
-		cfg.Ethstats.URL = ctx.String(utils.EthStatsURLFlag.Name)
+	utils.SetEthConfig(cmd, stack, &cfg.Eth)
+	if cmd.IsSet(utils.EthStatsURLFlag.Name) {
+		cfg.Ethstats.URL = cmd.String(utils.EthStatsURLFlag.Name)
 	}
-	applyMetricConfig(ctx, &cfg)
+	applyMetricConfig(cmd, &cfg)
 
 	return stack, cfg
 }
 
 // makeFullNode loads geth configuration and creates the Ethereum backend.
-func makeFullNode(_ context.Context, ctx *cli.Command) *node.Node {
-	stack, cfg := makeConfigNode(ctx)
-	if ctx.IsSet(utils.OverrideCancun.Name) {
-		v := ctx.Uint64(utils.OverrideCancun.Name)
+func makeFullNode(cmd *cli.Command) *node.Node {
+	stack, cfg := makeConfigNode(cmd)
+	if cmd.IsSet(utils.OverrideCancun.Name) {
+		v := cmd.Uint(utils.OverrideCancun.Name)
 		cfg.Eth.OverrideCancun = &v
 	}
-	if ctx.IsSet(utils.OverrideVerkle.Name) {
-		v := ctx.Uint64(utils.OverrideVerkle.Name)
+	if cmd.IsSet(utils.OverrideVerkle.Name) {
+		v := cmd.Uint(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = &v
 	}
 
@@ -216,7 +216,7 @@ func makeFullNode(_ context.Context, ctx *cli.Command) *node.Node {
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
 	// Configure GraphQL if requested.
-	if ctx.IsSet(utils.GraphQLEnabledFlag.Name) {
+	if cmd.IsSet(utils.GraphQLEnabledFlag.Name) {
 		utils.RegisterGraphQLService(stack, backend, filterSystem, &cfg.Node)
 	}
 	// Add the Ethereum Stats daemon if requested.
@@ -224,27 +224,27 @@ func makeFullNode(_ context.Context, ctx *cli.Command) *node.Node {
 		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
 	}
 	// Configure full-sync tester service if requested
-	if ctx.IsSet(utils.SyncTargetFlag.Name) {
-		hex := hexutil.MustDecode(ctx.String(utils.SyncTargetFlag.Name))
+	if cmd.IsSet(utils.SyncTargetFlag.Name) {
+		hex := hexutil.MustDecode(cmd.String(utils.SyncTargetFlag.Name))
 		if len(hex) != common.HashLength {
 			utils.Fatalf("invalid sync target length: have %d, want %d", len(hex), common.HashLength)
 		}
 		utils.RegisterFullSyncTester(stack, eth, common.BytesToHash(hex))
 	}
 
-	if ctx.IsSet(utils.DeveloperFlag.Name) {
+	if cmd.IsSet(utils.DeveloperFlag.Name) {
 		// Start dev mode.
-		simBeacon, err := catalyst.NewSimulatedBeacon(ctx.Uint64(utils.DeveloperPeriodFlag.Name), eth)
+		simBeacon, err := catalyst.NewSimulatedBeacon(cmd.Uint(utils.DeveloperPeriodFlag.Name), eth)
 		if err != nil {
 			utils.Fatalf("failed to register dev mode catalyst service: %v", err)
 		}
 		catalyst.RegisterSimulatedBeaconAPIs(stack, simBeacon)
 		stack.RegisterLifecycle(simBeacon)
-	} else if ctx.IsSet(utils.BeaconApiFlag.Name) {
+	} else if cmd.IsSet(utils.BeaconApiFlag.Name) {
 		// Start blsync mode.
 		srv := rpc.NewServer()
 		srv.RegisterName("engine", catalyst.NewConsensusAPI(eth))
-		blsyncer := blsync.NewClient(utils.MakeBeaconLightConfig(ctx))
+		blsyncer := blsync.NewClient(utils.MakeBeaconLightConfig(cmd))
 		blsyncer.SetEngineRPC(rpc.DialInProc(srv))
 		stack.RegisterLifecycle(blsyncer)
 	} else {
@@ -286,63 +286,63 @@ func dumpConfig(_ context.Context, ctx *cli.Command) error {
 	return nil
 }
 
-func applyMetricConfig(_ context.Context, ctx *cli.Command, cfg *gethConfig) {
-	if ctx.IsSet(utils.MetricsEnabledFlag.Name) {
-		cfg.Metrics.Enabled = ctx.Bool(utils.MetricsEnabledFlag.Name)
+func applyMetricConfig(cmd *cli.Command, cfg *gethConfig) {
+	if cmd.IsSet(utils.MetricsEnabledFlag.Name) {
+		cfg.Metrics.Enabled = cmd.Bool(utils.MetricsEnabledFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsEnabledExpensiveFlag.Name) {
+	if cmd.IsSet(utils.MetricsEnabledExpensiveFlag.Name) {
 		log.Warn("Expensive metrics are collected by default, please remove this flag", "flag", utils.MetricsEnabledExpensiveFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsHTTPFlag.Name) {
-		cfg.Metrics.HTTP = ctx.String(utils.MetricsHTTPFlag.Name)
+	if cmd.IsSet(utils.MetricsHTTPFlag.Name) {
+		cfg.Metrics.HTTP = cmd.String(utils.MetricsHTTPFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsPortFlag.Name) {
-		cfg.Metrics.Port = ctx.Int(utils.MetricsPortFlag.Name)
+	if cmd.IsSet(utils.MetricsPortFlag.Name) {
+		cfg.Metrics.Port = int(cmd.Int(utils.MetricsPortFlag.Name))
 	}
-	if ctx.IsSet(utils.MetricsEnableInfluxDBFlag.Name) {
-		cfg.Metrics.EnableInfluxDB = ctx.Bool(utils.MetricsEnableInfluxDBFlag.Name)
+	if cmd.IsSet(utils.MetricsEnableInfluxDBFlag.Name) {
+		cfg.Metrics.EnableInfluxDB = cmd.Bool(utils.MetricsEnableInfluxDBFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBEndpointFlag.Name) {
-		cfg.Metrics.InfluxDBEndpoint = ctx.String(utils.MetricsInfluxDBEndpointFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBEndpointFlag.Name) {
+		cfg.Metrics.InfluxDBEndpoint = cmd.String(utils.MetricsInfluxDBEndpointFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBDatabaseFlag.Name) {
-		cfg.Metrics.InfluxDBDatabase = ctx.String(utils.MetricsInfluxDBDatabaseFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBDatabaseFlag.Name) {
+		cfg.Metrics.InfluxDBDatabase = cmd.String(utils.MetricsInfluxDBDatabaseFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) {
-		cfg.Metrics.InfluxDBUsername = ctx.String(utils.MetricsInfluxDBUsernameFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) {
+		cfg.Metrics.InfluxDBUsername = cmd.String(utils.MetricsInfluxDBUsernameFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBPasswordFlag.Name) {
-		cfg.Metrics.InfluxDBPassword = ctx.String(utils.MetricsInfluxDBPasswordFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBPasswordFlag.Name) {
+		cfg.Metrics.InfluxDBPassword = cmd.String(utils.MetricsInfluxDBPasswordFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBTagsFlag.Name) {
-		cfg.Metrics.InfluxDBTags = ctx.String(utils.MetricsInfluxDBTagsFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBTagsFlag.Name) {
+		cfg.Metrics.InfluxDBTags = cmd.String(utils.MetricsInfluxDBTagsFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsEnableInfluxDBV2Flag.Name) {
-		cfg.Metrics.EnableInfluxDBV2 = ctx.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
+	if cmd.IsSet(utils.MetricsEnableInfluxDBV2Flag.Name) {
+		cfg.Metrics.EnableInfluxDBV2 = cmd.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBTokenFlag.Name) {
-		cfg.Metrics.InfluxDBToken = ctx.String(utils.MetricsInfluxDBTokenFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBTokenFlag.Name) {
+		cfg.Metrics.InfluxDBToken = cmd.String(utils.MetricsInfluxDBTokenFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBBucketFlag.Name) {
-		cfg.Metrics.InfluxDBBucket = ctx.String(utils.MetricsInfluxDBBucketFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBBucketFlag.Name) {
+		cfg.Metrics.InfluxDBBucket = cmd.String(utils.MetricsInfluxDBBucketFlag.Name)
 	}
-	if ctx.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) {
-		cfg.Metrics.InfluxDBOrganization = ctx.String(utils.MetricsInfluxDBOrganizationFlag.Name)
+	if cmd.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) {
+		cfg.Metrics.InfluxDBOrganization = cmd.String(utils.MetricsInfluxDBOrganizationFlag.Name)
 	}
 	// Sanity-check the commandline flags. It is fine if some unused fields is part
 	// of the toml-config, but we expect the commandline to only contain relevant
 	// arguments, otherwise it indicates an error.
 	var (
-		enableExport   = ctx.Bool(utils.MetricsEnableInfluxDBFlag.Name)
-		enableExportV2 = ctx.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
+		enableExport   = cmd.Bool(utils.MetricsEnableInfluxDBFlag.Name)
+		enableExportV2 = cmd.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
 	)
 	if enableExport || enableExportV2 {
-		v1FlagIsSet := ctx.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBPasswordFlag.Name)
+		v1FlagIsSet := cmd.IsSet(utils.MetricsInfluxDBUsernameFlag.Name) ||
+			cmd.IsSet(utils.MetricsInfluxDBPasswordFlag.Name)
 
-		v2FlagIsSet := ctx.IsSet(utils.MetricsInfluxDBTokenFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) ||
-			ctx.IsSet(utils.MetricsInfluxDBBucketFlag.Name)
+		v2FlagIsSet := cmd.IsSet(utils.MetricsInfluxDBTokenFlag.Name) ||
+			cmd.IsSet(utils.MetricsInfluxDBOrganizationFlag.Name) ||
+			cmd.IsSet(utils.MetricsInfluxDBBucketFlag.Name)
 
 		if enableExport && v2FlagIsSet {
 			utils.Fatalf("Flags --influxdb.metrics.organization, --influxdb.metrics.token, --influxdb.metrics.bucket are only available for influxdb-v2")

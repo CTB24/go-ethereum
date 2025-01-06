@@ -40,7 +40,7 @@ var (
 		Name:        "verkle",
 		Usage:       "A set of experimental verkle tree management commands",
 		Description: "",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:      "verify",
 				Usage:     "verify the conversion of a MPT into a verkle tree",
@@ -160,25 +160,25 @@ func verifyVerkle(_ context.Context, ctx *cli.Command) error {
 	return nil
 }
 
-func expandVerkle(_ context.Context, ctx *cli.Command) error {
-	stack, _ := makeConfigNode(ctx)
+func expandVerkle(_ context.Context, cmd *cli.Command) error {
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true)
+	chaindb := utils.MakeChainDatabase(cmd, stack, true)
 	defer chaindb.Close()
 	var (
 		rootC   common.Hash
 		keylist [][]byte
 		err     error
 	)
-	if ctx.NArg() >= 2 {
-		rootC, err = parseRoot(ctx.Args().First())
+	if cmd.NArg() >= 2 {
+		rootC, err = parseRoot(cmd.Args().First())
 		if err != nil {
 			log.Error("Failed to resolve state root", "error", err)
 			return err
 		}
-		keylist = make([][]byte, 0, ctx.Args().Len()-1)
-		args := ctx.Args().Slice()
+		keylist = make([][]byte, 0, cmd.Args().Len()-1)
+		args := cmd.Args().Slice()
 		for i := range args[1:] {
 			key, err := hex.DecodeString(args[i+1])
 			log.Info("decoded key", "arg", args[i+1], "key", key)
@@ -189,7 +189,7 @@ func expandVerkle(_ context.Context, ctx *cli.Command) error {
 		}
 		log.Info("Rebuilding the tree", "root", rootC)
 	} else {
-		return fmt.Errorf("usage: %s root key1 [key 2...]", ctx.App.Name)
+		return fmt.Errorf("usage: %s root key1 [key 2...]", cmd.Root().Name)
 	}
 
 	serializedRoot, err := chaindb.Get(rootC[:])

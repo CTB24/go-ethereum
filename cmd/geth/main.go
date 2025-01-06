@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -248,7 +248,9 @@ func init() {
 	if logTestCommand != nil {
 		app.Commands = append(app.Commands, logTestCommand)
 	}
-	sort.Sort(cli.CommandsByName(app.Commands))
+	slices.SortFunc(app.Commands, func(a, b *cli.Command) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	app.Flags = slices.Concat(
 		nodeFlags,
@@ -259,14 +261,13 @@ func init() {
 	)
 	flags.AutoEnvVars(app.Flags, "GETH")
 
-	app.Before = func(_ context.Context, ctx *cli.Command) error {
+	app.Before = func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 		maxprocs.Set() // Automatically set GOMAXPROCS to match Linux container CPU quota.
-		flags.MigrateGlobalFlags(ctx)
-		if err := debug.Setup(ctx); err != nil {
-			return err
+		if err := debug.Setup(cmd); err != nil {
+			return ctx, err
 		}
-		flags.CheckEnvVars(ctx, app.Flags, "GETH")
-		return nil
+		flags.CheckEnvVars(cmd, app.Flags, "GETH")
+		return ctx, nil
 	}
 	app.After = func(_ context.Context, ctx *cli.Command) error {
 		debug.Exit()
@@ -276,7 +277,8 @@ func init() {
 }
 
 func main() {
-	if err := app.Run(os.Args); err != nil {
+	ctx := context.Background()
+	if err := app.Run(ctx, os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -284,16 +286,16 @@ func main() {
 
 // prepare manipulates memory cache allowance and setups metric system.
 // This function should be called before launching devp2p stack.
-func prepare(_ context.Context, ctx *cli.Command) {
+func prepare(cmd *cli.Command) {
 	// If we're running a known preset, log it for convenience.
 	switch {
-	case ctx.IsSet(utils.SepoliaFlag.Name):
+	case cmd.IsSet(utils.SepoliaFlag.Name):
 		log.Info("Starting Geth on Sepolia testnet...")
 
-	case ctx.IsSet(utils.HoleskyFlag.Name):
+	case cmd.IsSet(utils.HoleskyFlag.Name):
 		log.Info("Starting Geth on Holesky testnet...")
 
-	case ctx.IsSet(utils.DeveloperFlag.Name):
+	case cmd.IsSet(utils.DeveloperFlag.Name):
 		log.Info("Starting Geth in ephemeral dev mode...")
 		log.Warn(`You are running Geth in --dev mode. Please note the following:
 
@@ -311,18 +313,18 @@ func prepare(_ context.Context, ctx *cli.Command) {
      to 0, and discovery is disabled.
 `)
 
-	case !ctx.IsSet(utils.NetworkIdFlag.Name):
+	case !cmd.IsSet(utils.NetworkIdFlag.Name):
 		log.Info("Starting Geth on Ethereum mainnet...")
 	}
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
-	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
+	if !cmd.IsSet(utils.CacheFlag.Name) && !cmd.IsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
-		if !ctx.IsSet(utils.HoleskyFlag.Name) &&
-			!ctx.IsSet(utils.SepoliaFlag.Name) &&
-			!ctx.IsSet(utils.DeveloperFlag.Name) {
+		if !cmd.IsSet(utils.HoleskyFlag.Name) &&
+			!cmd.IsSet(utils.SepoliaFlag.Name) &&
+			!cmd.IsSet(utils.DeveloperFlag.Name) {
 			// Nope, we're really on mainnet. Bump that cache up!
-			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
-			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
+			log.Info("Bumping default cache on mainnet", "provided", cmd.Int(utils.CacheFlag.Name), "updated", 4096)
+			cmd.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
 		}
 	}
 }
@@ -346,11 +348,11 @@ func geth(_ context.Context, ctx *cli.Command) error {
 
 // startNode boots up the system node and all registered protocols, after which
 // it starts the RPC/IPC interfaces and the miner.
-func startNode(_ context.Context, ctx *cli.Command, stack *node.Node, isConsole bool) {
+func startNode(cmd *cli.Command, stack *node.Node, isConsole bool) {
 	// Start up the node itself
-	utils.StartNode(ctx, stack, isConsole)
+	utils.StartNode(cmd, stack, isConsole)
 
-	if ctx.IsSet(utils.UnlockedAccountFlag.Name) {
+	if cmd.IsSet(utils.UnlockedAccountFlag.Name) {
 		log.Warn(`The "unlock" flag has been deprecated and has no effect`)
 	}
 
@@ -397,7 +399,7 @@ func startNode(_ context.Context, ctx *cli.Command, stack *node.Node, isConsole 
 
 	// Spawn a standalone goroutine for status synchronization monitoring,
 	// close the node when synchronization is complete if user required.
-	if ctx.Bool(utils.ExitWhenSyncedFlag.Name) {
+	if cmd.Bool(utils.ExitWhenSyncedFlag.Name) {
 		go func() {
 			sub := stack.EventMux().Subscribe(downloader.DoneEvent{})
 			defer sub.Unsubscribe()

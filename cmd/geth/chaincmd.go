@@ -214,11 +214,11 @@ func initGenesis(_ context.Context, ctx *cli.Command) error {
 
 	var overrides core.ChainOverrides
 	if ctx.IsSet(utils.OverrideCancun.Name) {
-		v := ctx.Uint64(utils.OverrideCancun.Name)
+		v := ctx.Uint(utils.OverrideCancun.Name)
 		overrides.OverrideCancun = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
-		v := ctx.Uint64(utils.OverrideVerkle.Name)
+		v := ctx.Uint(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
 	}
 
@@ -393,29 +393,29 @@ func exportChain(_ context.Context, ctx *cli.Command) error {
 	return nil
 }
 
-func importHistory(_ context.Context, ctx *cli.Command) error {
-	if ctx.Args().Len() != 1 {
-		utils.Fatalf("usage: %s", ctx.Command.ArgsUsage)
+func importHistory(_ context.Context, cmd *cli.Command) error {
+	if cmd.Args().Len() != 1 {
+		utils.Fatalf("usage: %s", cmd.ArgsUsage)
 	}
 
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	chain, db := utils.MakeChain(ctx, stack, false)
+	chain, db := utils.MakeChain(cmd, stack, false)
 	defer db.Close()
 
 	var (
 		start   = time.Now()
-		dir     = ctx.Args().Get(0)
+		dir     = cmd.Args().Get(0)
 		network string
 	)
 
 	// Determine network.
-	if utils.IsNetworkPreset(ctx) {
+	if utils.IsNetworkPreset(cmd) {
 		switch {
-		case ctx.Bool(utils.MainnetFlag.Name):
+		case cmd.Bool(utils.MainnetFlag.Name):
 			network = "mainnet"
-		case ctx.Bool(utils.SepoliaFlag.Name):
+		case cmd.Bool(utils.SepoliaFlag.Name):
 			network = "sepolia"
 		}
 	} else {
@@ -449,21 +449,21 @@ func importHistory(_ context.Context, ctx *cli.Command) error {
 
 // exportHistory exports chain history in Era archives at a specified
 // directory.
-func exportHistory(_ context.Context, ctx *cli.Command) error {
-	if ctx.Args().Len() != 3 {
-		utils.Fatalf("usage: %s", ctx.Command.ArgsUsage)
+func exportHistory(_ context.Context, cmd *cli.Command) error {
+	if cmd.Args().Len() != 3 {
+		utils.Fatalf("usage: %s", cmd.ArgsUsage)
 	}
 
-	stack, _ := makeConfigNode(ctx)
+	stack, _ := makeConfigNode(cmd)
 	defer stack.Close()
 
-	chain, _ := utils.MakeChain(ctx, stack, true)
+	chain, _ := utils.MakeChain(cmd, stack, true)
 	start := time.Now()
 
 	var (
-		dir         = ctx.Args().Get(0)
-		first, ferr = strconv.ParseInt(ctx.Args().Get(1), 10, 64)
-		last, lerr  = strconv.ParseInt(ctx.Args().Get(2), 10, 64)
+		dir         = cmd.Args().Get(0)
+		first, ferr = strconv.ParseInt(cmd.Args().Get(1), 10, 64)
+		last, lerr  = strconv.ParseInt(cmd.Args().Get(2), 10, 64)
 	)
 	if ferr != nil || lerr != nil {
 		utils.Fatalf("Export error in parsing parameters: block number not an integer\n")
@@ -505,13 +505,13 @@ func importPreimages(_ context.Context, ctx *cli.Command) error {
 	return nil
 }
 
-func parseDumpConfig(_ context.Context, ctx *cli.Command, db ethdb.Database) (*state.DumpConfig, common.Hash, error) {
+func parseDumpConfig(cmd *cli.Command, db ethdb.Database) (*state.DumpConfig, common.Hash, error) {
 	var header *types.Header
-	if ctx.NArg() > 1 {
-		return nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", ctx.NArg())
+	if cmd.NArg() > 1 {
+		return nil, common.Hash{}, fmt.Errorf("expected 1 argument (number or hash), got %d", cmd.NArg())
 	}
-	if ctx.NArg() == 1 {
-		arg := ctx.Args().First()
+	if cmd.NArg() == 1 {
+		arg := cmd.Args().First()
 		if hashish(arg) {
 			hash := common.HexToHash(arg)
 			if number := rawdb.ReadHeaderNumber(db, hash); number != nil {
@@ -537,7 +537,7 @@ func parseDumpConfig(_ context.Context, ctx *cli.Command, db ethdb.Database) (*s
 	if header == nil {
 		return nil, common.Hash{}, errors.New("no head block found")
 	}
-	startArg := common.FromHex(ctx.String(utils.StartKeyFlag.Name))
+	startArg := common.FromHex(cmd.String(utils.StartKeyFlag.Name))
 	var start common.Hash
 	switch len(startArg) {
 	case 0: // common.Hash
@@ -550,11 +550,11 @@ func parseDumpConfig(_ context.Context, ctx *cli.Command, db ethdb.Database) (*s
 		return nil, common.Hash{}, fmt.Errorf("invalid start argument: %x. 20 or 32 hex-encoded bytes required", startArg)
 	}
 	conf := &state.DumpConfig{
-		SkipCode:          ctx.Bool(utils.ExcludeCodeFlag.Name),
-		SkipStorage:       ctx.Bool(utils.ExcludeStorageFlag.Name),
-		OnlyWithAddresses: !ctx.Bool(utils.IncludeIncompletesFlag.Name),
+		SkipCode:          cmd.Bool(utils.ExcludeCodeFlag.Name),
+		SkipStorage:       cmd.Bool(utils.ExcludeStorageFlag.Name),
+		OnlyWithAddresses: !cmd.Bool(utils.IncludeIncompletesFlag.Name),
 		Start:             start.Bytes(),
-		Max:               ctx.Uint64(utils.DumpLimitFlag.Name),
+		Max:               cmd.Uint(utils.DumpLimitFlag.Name),
 	}
 	log.Info("State dump configured", "block", header.Number, "hash", header.Hash().Hex(),
 		"skipcode", conf.SkipCode, "skipstorage", conf.SkipStorage,

@@ -42,7 +42,7 @@ var (
 will prompt for your password and imports your ether presale account.
 It can be used non-interactively with the --password option taking a
 passwordfile as argument containing the wallet password in plaintext.`,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 
 				Name:      "import",
@@ -88,7 +88,7 @@ It is safe to transfer the entire directory or the individual keys therein
 between ethereum nodes by simply copying.
 
 Make sure you backup your keys regularly.`,
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:   "list",
 				Usage:  "Print summary of existing accounts",
@@ -192,8 +192,8 @@ nodes.
 )
 
 // makeAccountManager creates an account manager with backends
-func makeAccountManager(_ context.Context, ctx *cli.Command) *accounts.Manager {
-	cfg := loadBaseConfig(ctx)
+func makeAccountManager(cmd *cli.Command) *accounts.Manager {
+	cfg := loadBaseConfig(cmd)
 	am := accounts.NewManager(nil)
 	keydir, isEphemeral, err := cfg.Node.GetKeyStoreDir()
 	if err != nil {
@@ -257,7 +257,7 @@ func accountCreate(_ context.Context, ctx *cli.Command) error {
 		scryptP = keystore.LightScryptP
 	}
 
-	password, ok := readPasswordFromFile(ctx.Path(utils.PasswordFileFlag.Name))
+	password, ok := readPasswordFromFile(ctx.String(utils.PasswordFileFlag.Name))
 	if !ok {
 		password = utils.GetPassPhrase("Your new account is locked with a password. Please give a password. Do not forget this password.", true)
 	}
@@ -327,7 +327,7 @@ func importWallet(_ context.Context, ctx *cli.Command) error {
 	if len(backends) == 0 {
 		utils.Fatalf("Keystore is not available")
 	}
-	password, ok := readPasswordFromFile(ctx.Path(utils.PasswordFileFlag.Name))
+	password, ok := readPasswordFromFile(ctx.String(utils.PasswordFileFlag.Name))
 	if !ok {
 		password = utils.GetPassPhrase("", false)
 	}
@@ -355,7 +355,7 @@ func accountImport(_ context.Context, ctx *cli.Command) error {
 		utils.Fatalf("Keystore is not available")
 	}
 	ks := backends[0].(*keystore.KeyStore)
-	password, ok := readPasswordFromFile(ctx.Path(utils.PasswordFileFlag.Name))
+	password, ok := readPasswordFromFile(ctx.String(utils.PasswordFileFlag.Name))
 	if !ok {
 		password = utils.GetPassPhrase("Your new account is locked with a password. Please give a password. Do not forget this password.", true)
 	}

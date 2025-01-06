@@ -45,7 +45,7 @@ var (
 		Name:        "snapshot",
 		Usage:       "A set of commands based on the snapshot",
 		Description: "",
-		Subcommands: []*cli.Command{
+		Commands: []*cli.Command{
 			{
 				Name:      "prune-state",
 				Usage:     "Prune stale ethereum state data based on the snapshot",
@@ -180,7 +180,7 @@ func pruneState(_ context.Context, ctx *cli.Command) error {
 	}
 	prunerconfig := pruner.Config{
 		Datadir:   stack.ResolvePath(""),
-		BloomSize: ctx.Uint64(utils.BloomFilterSizeFlag.Name),
+		BloomSize: ctx.Uint(utils.BloomFilterSizeFlag.Name),
 	}
 	pruner, err := pruner.NewPruner(chaindb, prunerconfig)
 	if err != nil {
