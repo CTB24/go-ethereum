@@ -62,7 +62,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/supranational/blst v0.3.13
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
-	github.com/urfave/cli/v3 v3.0.0-beta1.0.20241130210637-606c89a79657
+	github.com/urfave/cli/v3 v3.0.0-beta1.0.20250105191540-55c2d912de92
 	go.uber.org/automaxprocs v1.5.2
 	golang.org/x/crypto v0.31.0
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
