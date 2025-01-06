@@ -41,5 +41,6 @@ const (
 
 func init() {
 	cli.HelpFlag.(*cli.BoolFlag).Category = MiscCategory
+	cli.HelpFlag.(*cli.BoolFlag).Hidden = true
 	cli.VersionFlag.(*cli.BoolFlag).Category = MiscCategory
 }
