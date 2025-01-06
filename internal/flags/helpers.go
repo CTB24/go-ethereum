@@ -35,23 +35,53 @@ var usecolor = (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.
 
 // NewApp creates an app with sane defaults.
 func NewApp(usage string) *cli.Command {
+	// Change help templates.
+	// This is done here instead of in an init function to avoid modifying
+	// package cli globals when this package is just imported. NewApp will only ever be called
+	// from packages which are actually commands, and only  need the modification.
+	setupTemplates()
+
 	git, _ := version.VCS()
 	return &cli.Command{
-		CustomRootCommandHelpTemplate: rootCommandTemplate(),
-		EnableShellCompletion:         true,
-		Version:                       version.WithCommit(git.Commit, git.Date),
-		Usage:                         usage,
-		Copyright:                     "Copyright 2013-2025 The go-ethereum Authors",
+		EnableShellCompletion: true,
+		Version:               version.WithCommit(git.Commit, git.Date),
+		Usage:                 usage,
+		Copyright:             "Copyright 2013-2025 The go-ethereum Authors",
 	}
 }
 
-func rootCommandTemplate() string {
-	tpl := regexp.MustCompile("[A-Z ]+:").ReplaceAllString(cli.RootCommandHelpTemplate, "\u001B[33m$0\u001B[0m")
-	return strings.ReplaceAll(tpl, "{{template \"visibleFlagCategoryTemplate\" .}}", "{{range .VisibleFlagCategories}}\n   {{if .Name}}\u001B[33m{{.Name}}\u001B[0m\n\n   {{end}}{{$flglen := len .Flags}}{{range $i, $e := .Flags}}{{if eq (subtract $flglen $i) 1}}{{$e}}\n{{else}}{{$e}}\n   {{end}}{{end}}{{end}}")
-}
+const flagCategoryTemplate = `{{range .VisibleFlagCategories}}
 
-func init() {
+   {{if .Name}}{{.Name}}
+   {{end}}{{$last := subtract (len .Flags) 1}}{{range $i, $e := .Flags}}{{$e}}{{if ne $i $last}}
+{{end}}{{end}}{{end}}`
+
+const persistentFlagTemplate = `{{range $i, $e := .VisiblePersistentFlags}}
+   {{$e}}{{end}}`
+
+// setupTemplates configures the cli library global help templates.
+func setupTemplates() {
 	cli.FlagStringer = FlagString
+
+	categoryTemplate := flagCategoryTemplate
+	if usecolor {
+		categoryTemplate = strings.Replace(flagCategoryTemplate, "{{.Name}}", "\u001B[33m{{.Name}}\u001B[0m", 1)
+	}
+
+	rt := cli.RootCommandHelpTemplate
+	if usecolor {
+		rt = regexp.MustCompile("[A-Z ]+:").ReplaceAllString(rt, "\u001B[33m$0\u001B[0m")
+	}
+	rt = strings.ReplaceAll(rt, "{{template \"visibleFlagCategoryTemplate\" .}}", categoryTemplate)
+	cli.RootCommandHelpTemplate = rt
+
+	cht := cli.CommandHelpTemplate
+	if usecolor {
+		cht = regexp.MustCompile("[A-Z ]+:").ReplaceAllString(cht, "\u001B[33m$0\u001B[0m")
+	}
+	cht = strings.ReplaceAll(cht, "{{template \"visibleFlagCategoryTemplate\" .}}", flagCategoryTemplate)
+	cht = strings.ReplaceAll(cht, "{{template \"visiblePersistentFlagTemplate\" .}}", persistentFlagTemplate)
+	cli.CommandHelpTemplate = cht
 }
 
 // FlagString prints a single flag in help.
