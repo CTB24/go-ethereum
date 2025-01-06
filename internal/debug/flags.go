@@ -40,109 +40,72 @@ import (
 )
 
 var (
-	globalVerbosity        = int64(3)
-	globalVmodule          string
-	globalLogFormat        = "terminal"
-	globalLogJSONUsed      bool
-	globalLogFile          string
-	globalLogRotateEnabled bool
-	globalLogMaxSize       = uint64(100)
-	globalLogMaxAge        = uint64(30)
-	globalLogMaxBackups    = uint64(10)
-	globalLogCompress      = false
-	globalPprofEnabled     = false
-	globalPprofAddr        = "127.0.0.1"
-	globalPprofPort        = uint64(6060)
-	globalBlockprofileRate = int64(-1)
-	globalCPUProfileFile   string
-	globalGoTraceFile      string
-)
-
-var (
-	globalLogJSON bool
-)
-
-var (
 	verbosityFlag = &cli.IntFlag{
-		Name:        "verbosity",
-		Usage:       "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail",
-		Destination: &globalVerbosity,
-		Value:       globalVerbosity,
-		Category:    flags.LoggingCategory,
+		Name:     "verbosity",
+		Usage:    "Logging verbosity: 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=detail",
+		Value:    3,
+		Category: flags.LoggingCategory,
 	}
 	logVmoduleFlag = &cli.StringFlag{
-		Name:        "log.vmodule",
-		Usage:       "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
-		Destination: &globalVmodule,
-		Value:       globalVmodule,
-		Category:    flags.LoggingCategory,
+		Name:     "log.vmodule",
+		Usage:    "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
+		Category: flags.LoggingCategory,
 	}
 	logFormatFlag = &cli.StringFlag{
-		Name:        "log.format",
-		Usage:       "Log format to use (json|logfmt|terminal)",
-		Destination: &globalLogFormat,
-		Value:       globalLogFormat,
-		Category:    flags.LoggingCategory,
+		Name:     "log.format",
+		Usage:    "Log format to use (json|logfmt|terminal)",
+		Value:    "terminal",
+		Category: flags.LoggingCategory,
 	}
 	logFileFlag = &cli.StringFlag{
-		Name:        "log.file",
-		Usage:       "Write logs to a file",
-		Destination: &globalLogFile,
-		Category:    flags.LoggingCategory,
+		Name:     "log.file",
+		Usage:    "Write logs to a file",
+		Category: flags.LoggingCategory,
 	}
 	logRotateFlag = &cli.BoolFlag{
-		Name:        "log.rotate",
-		Usage:       "Enables log file rotation",
-		Destination: &globalLogRotateEnabled,
-		Category:    flags.LoggingCategory,
+		Name:     "log.rotate",
+		Usage:    "Enables log file rotation",
+		Category: flags.LoggingCategory,
 	}
 	logMaxSizeMBsFlag = &cli.UintFlag{
-		Name:        "log.maxsize",
-		Usage:       "Maximum size in MBs of a single log file",
-		Destination: &globalLogMaxSize,
-		Value:       globalLogMaxSize,
-		Category:    flags.LoggingCategory,
+		Name:     "log.maxsize",
+		Usage:    "Maximum size in MBs of a single log file",
+		Value:    100,
+		Category: flags.LoggingCategory,
 	}
 	logMaxBackupsFlag = &cli.UintFlag{
-		Name:        "log.maxbackups",
-		Usage:       "Maximum number of log files to retain",
-		Destination: &globalLogMaxBackups,
-		Value:       globalLogMaxBackups,
-		Category:    flags.LoggingCategory,
+		Name:     "log.maxbackups",
+		Usage:    "Maximum number of log files to retain",
+		Value:    10,
+		Category: flags.LoggingCategory,
 	}
 	logMaxAgeFlag = &cli.UintFlag{
-		Name:        "log.maxage",
-		Usage:       "Maximum number of days to retain a log file",
-		Destination: &globalLogMaxAge,
-		Value:       globalLogMaxAge,
-		Category:    flags.LoggingCategory,
+		Name:     "log.maxage",
+		Usage:    "Maximum number of days to retain a log file",
+		Value:    30,
+		Category: flags.LoggingCategory,
 	}
 	logCompressFlag = &cli.BoolFlag{
-		Name:        "log.compress",
-		Usage:       "Compress the log files",
-		Destination: &globalLogCompress,
-		Value:       globalLogCompress,
-		Category:    flags.LoggingCategory,
+		Name:     "log.compress",
+		Usage:    "Compress the log files",
+		Category: flags.LoggingCategory,
 	}
 	pprofFlag = &cli.BoolFlag{
-		Name:        "pprof",
-		Usage:       "Enable the pprof HTTP server",
-		Destination: &globalPprofEnabled,
-		Category:    flags.LoggingCategory,
+		Name:     "pprof",
+		Usage:    "Enable the pprof HTTP server",
+		Category: flags.LoggingCategory,
 	}
 	pprofPortFlag = &cli.UintFlag{
-		Name:        "pprof.port",
-		Usage:       "pprof HTTP server listening port",
-		Destination: &globalPprofPort,
-		Value:       globalPprofPort,
-		Category:    flags.LoggingCategory,
+		Name:     "pprof.port",
+		Usage:    "pprof HTTP server listening port",
+		Value:    6060,
+		Category: flags.LoggingCategory,
 	}
 	pprofAddrFlag = &cli.StringFlag{
-		Name:        "pprof.addr",
-		Usage:       "pprof HTTP server listening interface",
-		Destination: &globalPprofAddr,
-		Value:       globalPprofAddr,
-		Category:    flags.LoggingCategory,
+		Name:     "pprof.addr",
+		Usage:    "pprof HTTP server listening interface",
+		Value:    "127.0.0.1",
+		Category: flags.LoggingCategory,
 	}
 	memprofilerateFlag = &cli.IntFlag{
 		Name:  "pprof.memprofilerate",
@@ -154,33 +117,29 @@ var (
 		Category: flags.LoggingCategory,
 	}
 	blockprofilerateFlag = &cli.IntFlag{
-		Name:        "pprof.blockprofilerate",
-		Usage:       "Turn on block profiling with the given rate",
-		Destination: &globalBlockprofileRate,
-		Category:    flags.LoggingCategory,
+		Name:     "pprof.blockprofilerate",
+		Usage:    "Turn on block profiling with the given rate",
+		Category: flags.LoggingCategory,
 	}
 	cpuprofileFlag = &cli.StringFlag{
-		Name:        "pprof.cpuprofile",
-		Usage:       "Write CPU profile to the given file",
-		Destination: &globalCPUProfileFile,
-		Category:    flags.LoggingCategory,
+		Name:     "pprof.cpuprofile",
+		Usage:    "Write CPU profile to the given file",
+		Category: flags.LoggingCategory,
 	}
-	traceFlag = &cli.StringFlag{
-		Name:        "go-execution-trace",
-		Usage:       "Write Go execution trace to the given file",
-		Destination: &globalGoTraceFile,
-		Category:    flags.LoggingCategory,
+	goTraceFlag = &cli.StringFlag{
+		Name:     "go-execution-trace",
+		Usage:    "Write Go execution trace to the given file",
+		Category: flags.LoggingCategory,
 	}
 )
 
 // Deprecated flags.
 var (
 	vmoduleFlag = &cli.StringFlag{
-		Name:        "vmodule",
-		Usage:       "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
-		Destination: &globalVmodule,
-		Hidden:      true, // deprecated, don't show in help
-		Category:    flags.DeprecatedCategory,
+		Name:     "vmodule",
+		Usage:    "Per-module verbosity: comma-separated list of <pattern>=<level> (e.g. eth/*=5,p2p=4)",
+		Hidden:   true, // deprecated, don't show in help
+		Category: flags.DeprecatedCategory,
 	}
 	logjsonFlag = &cli.BoolFlag{
 		Name:     "log.json",
@@ -209,7 +168,7 @@ var Flags = []cli.Flag{
 	memprofilerateFlag,
 	blockprofilerateFlag,
 	cpuprofileFlag,
-	traceFlag,
+	goTraceFlag,
 }
 
 var (
@@ -228,37 +187,41 @@ func Setup(cmd *cli.Command) error {
 		handler        slog.Handler
 		terminalOutput = io.Writer(os.Stderr)
 		output         io.Writer
+
+		logFile          = cmd.String(logFileFlag.Name)
+		logFormat        = cmd.String(logFormatFlag.Name)
+		logRotateEnabled = cmd.Bool(logRotateFlag.Name)
 	)
-	if len(globalLogFile) > 0 {
-		if err := validateLogLocation(filepath.Dir(globalLogFile)); err != nil {
+	if len(logFile) > 0 {
+		if err := validateLogLocation(filepath.Dir(logFile)); err != nil {
 			return fmt.Errorf("failed to initiatilize file logger: %v", err)
 		}
 	}
-	context := []any{"format", globalLogFormat, "rotate", globalLogRotateEnabled}
+	context := []any{"format", logFormat, "rotate", logRotateEnabled}
 
-	if globalLogRotateEnabled {
+	if logRotateEnabled {
 		// Lumberjack uses <processname>-lumberjack.log in is.TempDir() if empty.
 		// so typically /tmp/geth-lumberjack.log on linux
-		if len(globalLogFile) > 0 {
-			context = append(context, "location", globalLogFile)
+		if len(logFile) > 0 {
+			context = append(context, "location", logFile)
 		} else {
 			context = append(context, "location", filepath.Join(os.TempDir(), "geth-lumberjack.log"))
 		}
 		logOutputFile = &lumberjack.Logger{
-			Filename:   globalLogFile,
-			MaxSize:    int(globalLogMaxSize),
-			MaxBackups: int(globalLogMaxBackups),
-			MaxAge:     int(globalLogMaxAge),
-			Compress:   globalLogCompress,
+			Filename:   logFile,
+			MaxSize:    int(cmd.Int(logMaxSizeMBsFlag.Name)),
+			MaxBackups: int(cmd.Int(logMaxBackupsFlag.Name)),
+			MaxAge:     int(cmd.Int(logMaxAgeFlag.Name)),
+			Compress:   cmd.Bool(logCompressFlag.Name),
 		}
 		output = io.MultiWriter(terminalOutput, logOutputFile)
-	} else if globalLogFile != "" {
+	} else if logFile != "" {
 		var err error
-		if logOutputFile, err = os.OpenFile(globalLogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
+		if logOutputFile, err = os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err != nil {
 			return err
 		}
 		output = io.MultiWriter(logOutputFile, terminalOutput)
-		context = append(context, "location", globalLogFile)
+		context = append(context, "location", logFile)
 	} else {
 		output = terminalOutput
 	}
@@ -267,16 +230,16 @@ func Setup(cmd *cli.Command) error {
 	if cmd.IsSet(logjsonFlag.Name) {
 		deprecatedLogJSONUsed = true
 		if cmd.Bool(logjsonFlag.Name) {
-			globalLogFormat = "json"
+			logFormat = "json"
 		}
 	}
 
 	switch {
-	case globalLogFormat == "json":
+	case logFormat == "json":
 		handler = log.JSONHandler(output)
-	case globalLogFormat == "logfmt":
+	case logFormat == "logfmt":
 		handler = log.LogfmtHandler(output)
-	case globalLogFormat == "", globalLogFormat == "terminal":
+	case logFormat == "", logFormat == "terminal":
 		useColor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
 		if useColor {
 			terminalOutput = colorable.NewColorableStderr()
@@ -289,16 +252,18 @@ func Setup(cmd *cli.Command) error {
 		handler = log.NewTerminalHandler(output, useColor)
 	default:
 		// Unknown log format specified
-		return fmt.Errorf("unknown log format: %v", globalLogFormat)
+		return fmt.Errorf("unknown log format: %v", logFormat)
 	}
 	glogger = log.NewGlogHandler(handler)
 
 	// logging
-	verbosity := log.FromLegacyLevel(int(globalVerbosity))
-	glogger.Verbosity(verbosity)
-	if globalVmodule != "" {
-		glogger.Vmodule(globalVmodule)
+	verbosity := log.FromLegacyLevel(int(cmd.Int(verbosityFlag.Name)))
+	vmodule := cmd.String(vmoduleFlag.Name)
+	if cmd.IsSet(logVmoduleFlag.Name) {
+		vmodule = cmd.String(logVmoduleFlag.Name)
 	}
+	glogger.Verbosity(verbosity)
+	glogger.Vmodule(vmodule)
 	log.SetDefault(log.NewLogger(glogger))
 
 	// Print deprecation notices. This needs to be done after logging is initialized.
@@ -310,30 +275,32 @@ func Setup(cmd *cli.Command) error {
 	}
 
 	// profiling, tracing
-	if globalBlockprofileRate >= 0 {
-		Handler.SetBlockProfileRate(int(globalBlockprofileRate))
+	if cmd.IsSet(blockprofilerateFlag.Name) {
+		Handler.SetBlockProfileRate(int(cmd.Int(blockprofilerateFlag.Name)))
 	}
-	if globalGoTraceFile != "" {
-		if err := Handler.StartGoTrace(globalGoTraceFile); err != nil {
+	if cmd.IsSet(goTraceFlag.Name) {
+		if err := Handler.StartGoTrace(cmd.String(goTraceFlag.Name)); err != nil {
 			return err
 		}
 	}
-	if globalCPUProfileFile != "" {
-		if err := Handler.StartCPUProfile(globalCPUProfileFile); err != nil {
+	if cmd.IsSet(cpuprofileFlag.Name) {
+		if err := Handler.StartCPUProfile(cmd.String(cpuprofileFlag.Name)); err != nil {
 			return err
 		}
 	}
 
 	// pprof server
-	if globalPprofEnabled {
-		address := net.JoinHostPort(globalPprofAddr, fmt.Sprintf("%d", globalPprofPort))
+	if cmd.Bool(pprofFlag.Name) {
+		addr := cmd.String(pprofAddrFlag.Name)
+		port := cmd.Int(pprofPortFlag.Name)
+		address := net.JoinHostPort(addr, fmt.Sprintf("%d", port))
 		// This context value ("metrics.addr") represents the utils.MetricsHTTPFlag.Name.
 		// It cannot be imported because it will cause a cyclical dependency.
 		//
 		// TODO(fjl): move this to package metrics setup
 		StartPProf(address, !cmd.IsSet("metrics.addr"))
 	}
-	if len(globalLogFile) > 0 || globalLogRotateEnabled {
+	if len(logFile) > 0 || logRotateEnabled {
 		log.Info("Logging configured", context...)
 	}
 	return nil
