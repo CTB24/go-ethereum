@@ -1974,6 +1974,7 @@ func RegisterFullSyncTester(stack *node.Node, eth *eth.Ethereum, target common.H
 func SetupMetrics(cfg *metrics.Config) {
 	if !cfg.Enabled {
 		return
+	}
 	log.Info("Enabling metrics collection")
 	metrics.Enable()
 
