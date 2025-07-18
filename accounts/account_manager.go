@@ -147,9 +147,21 @@ func (am *Manager) Sign(addr common.Address, hash []byte) (signature []byte, err
 	return crypto.Sign(hash, unlockedKey.PrivateKey)
 }
 
+// SignWithPassphrase signs hash if the private key matching the given address can be
+// decrypted with the given passphrase.
+func (am *Manager) SignWithPassphrase(addr common.Address, passphrase string, hash []byte) (signature []byte, err error) {
+	_, key, err := am.getDecryptedKey(Account{Address: addr}, passphrase)
+	if err != nil {
+		return nil, err
+	}
+
+	defer zeroKey(key.PrivateKey)
+	return crypto.Sign(hash, key.PrivateKey)
+}
+
 // Unlock unlocks the given account indefinitely.
-func (am *Manager) Unlock(a Account, keyAuth string) error {
-	return am.TimedUnlock(a, keyAuth, 0)
+func (am *Manager) Unlock(a Account, passphrase string) error {
+	return am.TimedUnlock(a, passphrase, 0)
 }
 
 // Lock removes the private key with the given address from memory.
@@ -284,7 +296,12 @@ func (am *Manager) Import(keyJSON []byte, passphrase, newPassphrase string) (Acc
 
 // ImportECDSA stores the given key into the key directory, encrypting it with the passphrase.
 func (am *Manager) ImportECDSA(priv *ecdsa.PrivateKey, passphrase string) (Account, error) {
-	return am.importKey(newKeyFromECDSA(priv), passphrase)
+	key := newKeyFromECDSA(priv)
+	if am.cache.hasAddress(key.Address) {
+		return Account{}, fmt.Errorf("account already exists")
+	}
+
+	return am.importKey(key, passphrase)
 }
 
 func (am *Manager) importKey(key *Key, passphrase string) (Account, error) {

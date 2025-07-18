@@ -26,6 +26,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/logger"
@@ -49,7 +50,10 @@ type Node struct {
 	datadir  string         // Path to the currently used data directory
 	eventmux *event.TypeMux // Event multiplexer used between the services of a stack
 
-	serverConfig *p2p.Server // Configuration of the underlying P2P networking layer
+	accman            *accounts.Manager
+	ephemeralKeystore string // if non-empty, the key directory that will be removed by Stop
+
+	serverConfig p2p.Config
 	server       *p2p.Server // Currently running P2P networking layer
 
 	serviceFuncs []ServiceConstructor     // Service constructors (in dependency order)
@@ -90,14 +94,21 @@ func New(conf *Config) (*Node, error) {
 			return nil, err
 		}
 	}
+	am, ephemeralKeystore, err := makeAccountManager(conf)
+	if err != nil {
+		return nil, err
+	}
+
 	// Assemble the networking layer and the node itself
 	nodeDbPath := ""
 	if conf.DataDir != "" {
 		nodeDbPath = filepath.Join(conf.DataDir, datadirNodeDatabase)
 	}
 	return &Node{
-		datadir: conf.DataDir,
-		serverConfig: &p2p.Server{
+		datadir:           conf.DataDir,
+		accman:            am,
+		ephemeralKeystore: ephemeralKeystore,
+		serverConfig: p2p.Config{
 			PrivateKey:      conf.NodeKey(),
 			Name:            conf.Name,
 			Discovery:       !conf.NoDiscovery,
@@ -151,16 +162,15 @@ func (n *Node) Start() error {
 		return ErrNodeRunning
 	}
 	// Otherwise copy and specialize the P2P configuration
-	running := new(p2p.Server)
-	*running = *n.serverConfig
-
+	running := &p2p.Server{Config: n.serverConfig}
 	services := make(map[reflect.Type]Service)
 	for _, constructor := range n.serviceFuncs {
 		// Create a new context for the particular service
 		ctx := &ServiceContext{
-			datadir:  n.datadir,
-			services: make(map[reflect.Type]Service),
-			EventMux: n.eventmux,
+			datadir:        n.datadir,
+			services:       make(map[reflect.Type]Service),
+			EventMux:       n.eventmux,
+			AccountManager: n.accman,
 		}
 		for kind, s := range services { // copy needed for threaded access
 			ctx.services[kind] = s
@@ -311,7 +321,7 @@ func (n *Node) startIPC(apis []rpc.API) error {
 				glog.V(logger.Error).Infof("IPC accept failed: %v", err)
 				continue
 			}
-			go handler.ServeCodec(rpc.NewJSONCodec(conn), rpc.OptionMethodInvocation | rpc.OptionSubscriptions)
+			go handler.ServeCodec(rpc.NewJSONCodec(conn), rpc.OptionMethodInvocation|rpc.OptionSubscriptions)
 		}
 	}()
 	// All listeners booted successfully
@@ -475,8 +485,17 @@ func (n *Node) Stop() error {
 	n.server = nil
 	close(n.stop)
 
+	// Remove the keystore if it was created ephemerally.
+	var keystoreErr error
+	if n.ephemeralKeystore != "" {
+		keystoreErr = os.RemoveAll(n.ephemeralKeystore)
+	}
+
 	if len(failure.Services) > 0 {
 		return failure
+	}
+	if keystoreErr != nil {
+		return keystoreErr
 	}
 	return nil
 }
@@ -507,16 +526,14 @@ func (n *Node) Restart() error {
 }
 
 // Attach creates an RPC client attached to an in-process API handler.
-func (n *Node) Attach() (rpc.Client, error) {
+func (n *Node) Attach() (*rpc.Client, error) {
 	n.lock.RLock()
 	defer n.lock.RUnlock()
 
-	// Short circuit if the node's not running
 	if n.server == nil {
 		return nil, ErrNodeStopped
 	}
-	// Otherwise attach to the API and return
-	return rpc.NewInProcRPCClient(n.inprocHandler), nil
+	return rpc.DialInProc(n.inprocHandler), nil
 }
 
 // Server retrieves the currently running P2P network layer. This method is meant
@@ -550,6 +567,11 @@ func (n *Node) Service(service interface{}) error {
 // DataDir retrieves the current datadir used by the protocol stack.
 func (n *Node) DataDir() string {
 	return n.datadir
+}
+
+// AccountManager retrieves the account manager used by the protocol stack.
+func (n *Node) AccountManager() *accounts.Manager {
+	return n.accman
 }
 
 // IPCEndpoint retrieves the current IPC endpoint used by the protocol stack.

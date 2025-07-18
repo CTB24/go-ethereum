@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/logger"
 	"github.com/ethereum/go-ethereum/logger/glog"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/pow"
 	"gopkg.in/fatih/set.v0"
 )
@@ -58,7 +60,7 @@ type uint64RingBuffer struct {
 	next int      //where is the next insertion? assert 0 <= next < len(ints)
 }
 
-// environment is the workers current environment and holds
+// Work is the workers current environment and holds
 // all of the current state information
 type Work struct {
 	config             *core.ChainConfig
@@ -94,13 +96,16 @@ type worker struct {
 
 	mu sync.Mutex
 
+	// update loop
+	mux    *event.TypeMux
+	events event.Subscription
+	wg     sync.WaitGroup
+
 	agents map[Agent]struct{}
 	recv   chan *Result
-	mux    *event.TypeMux
-	quit   chan struct{}
 	pow    pow.PoW
 
-	eth     core.Backend
+	eth     Backend
 	chain   *core.BlockChain
 	proc    core.Validator
 	chainDb ethdb.Database
@@ -125,11 +130,11 @@ type worker struct {
 	fullValidation bool
 }
 
-func newWorker(config *core.ChainConfig, coinbase common.Address, eth core.Backend) *worker {
+func newWorker(config *core.ChainConfig, coinbase common.Address, eth Backend, mux *event.TypeMux) *worker {
 	worker := &worker{
 		config:         config,
 		eth:            eth,
-		mux:            eth.EventMux(),
+		mux:            mux,
 		chainDb:        eth.ChainDb(),
 		recv:           make(chan *Result, resultQueueSize),
 		gasPrice:       new(big.Int),
@@ -138,13 +143,13 @@ func newWorker(config *core.ChainConfig, coinbase common.Address, eth core.Backe
 		possibleUncles: make(map[common.Hash]*types.Block),
 		coinbase:       coinbase,
 		txQueue:        make(map[common.Hash]*types.Transaction),
-		quit:           make(chan struct{}),
 		agents:         make(map[Agent]struct{}),
 		fullValidation: false,
 	}
+	worker.events = worker.mux.Subscribe(core.ChainHeadEvent{}, core.ChainSideEvent{}, core.TxPreEvent{})
 	go worker.update()
-	go worker.wait()
 
+	go worker.wait()
 	worker.commitNewWork()
 
 	return worker
@@ -184,9 +189,10 @@ func (self *worker) start() {
 }
 
 func (self *worker) stop() {
+	self.wg.Wait()
+
 	self.mu.Lock()
 	defer self.mu.Unlock()
-
 	if atomic.LoadInt32(&self.mining) == 1 {
 		// Stop all agents.
 		for agent := range self.agents {
@@ -217,36 +223,22 @@ func (self *worker) unregister(agent Agent) {
 }
 
 func (self *worker) update() {
-	eventSub := self.mux.Subscribe(core.ChainHeadEvent{}, core.ChainSideEvent{}, core.TxPreEvent{})
-	defer eventSub.Unsubscribe()
-
-	eventCh := eventSub.Chan()
-	for {
-		select {
-		case event, ok := <-eventCh:
-			if !ok {
-				// Event subscription closed, set the channel to nil to stop spinning
-				eventCh = nil
-				continue
+	for event := range self.events.Chan() {
+		// A real event arrived, process interesting content
+		switch ev := event.Data.(type) {
+		case core.ChainHeadEvent:
+			self.commitNewWork()
+		case core.ChainSideEvent:
+			self.uncleMu.Lock()
+			self.possibleUncles[ev.Block.Hash()] = ev.Block
+			self.uncleMu.Unlock()
+		case core.TxPreEvent:
+			// Apply transaction to the pending state if we're not mining
+			if atomic.LoadInt32(&self.mining) == 0 {
+				self.currentMu.Lock()
+				self.current.commitTransactions(self.mux, types.Transactions{ev.Tx}, self.gasPrice, self.chain)
+				self.currentMu.Unlock()
 			}
-			// A real event arrived, process interesting content
-			switch ev := event.Data.(type) {
-			case core.ChainHeadEvent:
-				self.commitNewWork()
-			case core.ChainSideEvent:
-				self.uncleMu.Lock()
-				self.possibleUncles[ev.Block.Hash()] = ev.Block
-				self.uncleMu.Unlock()
-			case core.TxPreEvent:
-				// Apply transaction to the pending state if we're not mining
-				if atomic.LoadInt32(&self.mining) == 0 {
-					self.currentMu.Lock()
-					self.current.commitTransactions(self.mux, types.Transactions{ev.Tx}, self.gasPrice, self.chain)
-					self.currentMu.Unlock()
-				}
-			}
-		case <-self.quit:
-			return
 		}
 	}
 }
@@ -282,7 +274,7 @@ func (self *worker) wait() {
 				go self.mux.Post(core.NewMinedBlockEvent{Block: block})
 			} else {
 				work.state.Commit()
-				parent := self.chain.GetBlock(block.ParentHash())
+				parent := self.chain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 				if parent == nil {
 					glog.V(logger.Error).Infoln("Invalid block found during mining")
 					continue
@@ -329,7 +321,7 @@ func (self *worker) wait() {
 						self.mux.Post(core.ChainHeadEvent{Block: block})
 						self.mux.Post(logs)
 					}
-					if err := core.WriteBlockReceipts(self.chainDb, block.Hash(), receipts); err != nil {
+					if err := core.WriteBlockReceipts(self.chainDb, block.Hash(), block.NumberU64(), receipts); err != nil {
 						glog.V(logger.Warn).Infoln("error writing block receipts:", err)
 					}
 				}(block, work.state.Logs(), work.receipts)
@@ -478,7 +470,19 @@ func (self *worker) commitNewWork() {
 		Extra:      self.extra,
 		Time:       big.NewInt(tstamp),
 	}
-
+	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
+	if daoBlock := self.config.DAOForkBlock; daoBlock != nil {
+		// Check whether the block is among the fork extra-override range
+		limit := new(big.Int).Add(daoBlock, params.DAOForkExtraRange)
+		if header.Number.Cmp(daoBlock) >= 0 && header.Number.Cmp(limit) < 0 {
+			// Depending whether we support or oppose the fork, override differently
+			if self.config.DAOForkSupport {
+				header.Extra = common.CopyBytes(params.DAOForkBlockExtra)
+			} else if bytes.Compare(header.Extra, params.DAOForkBlockExtra) == 0 {
+				header.Extra = []byte{} // If miner opposes, don't let it use the reserved extra-data
+			}
+		}
+	}
 	previous := self.current
 	// Could potentially happen if starting to mine in an odd state.
 	err := self.makeCurrent(parent, header)
@@ -486,7 +490,11 @@ func (self *worker) commitNewWork() {
 		glog.V(logger.Info).Infoln("Could not create new env for mining, retrying on next block.")
 		return
 	}
+	// Create the current work task and check any fork transitions needed
 	work := self.current
+	if self.config.DAOForkSupport && self.config.DAOForkBlock != nil && self.config.DAOForkBlock.Cmp(header.Number) == 0 {
+		core.ApplyDAOHardFork(work.state)
+	}
 
 	/* //approach 1
 	transactions := self.eth.TxPool().GetTransactions()

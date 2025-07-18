@@ -23,14 +23,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/console"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/logger/glog"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
@@ -71,9 +72,12 @@ Use "ethereum dump 0" to dump the genesis block.
 	}
 )
 
-func importChain(ctx *cli.Context) {
+func importChain(ctx *cli.Context) error {
 	if len(ctx.Args()) != 1 {
 		utils.Fatalf("This command requires an argument.")
+	}
+	if ctx.GlobalBool(utils.TestNetFlag.Name) {
+		state.StartingNonce = 1048576 // (2**20)
 	}
 	chain, chainDb := utils.MakeChain(ctx)
 	start := time.Now()
@@ -83,9 +87,10 @@ func importChain(ctx *cli.Context) {
 		utils.Fatalf("Import error: %v", err)
 	}
 	fmt.Printf("Import done in %v", time.Since(start))
+	return nil
 }
 
-func exportChain(ctx *cli.Context) {
+func exportChain(ctx *cli.Context) error {
 	if len(ctx.Args()) < 1 {
 		utils.Fatalf("This command requires an argument.")
 	}
@@ -113,10 +118,11 @@ func exportChain(ctx *cli.Context) {
 		utils.Fatalf("Export error: %v\n", err)
 	}
 	fmt.Printf("Export done in %v", time.Since(start))
+	return nil
 }
 
-func removeDB(ctx *cli.Context) {
-	confirm, err := utils.Stdin.ConfirmPrompt("Remove local database?")
+func removeDB(ctx *cli.Context) error {
+	confirm, err := console.Stdin.PromptConfirm("Remove local database?")
 	if err != nil {
 		utils.Fatalf("%v", err)
 	}
@@ -131,9 +137,10 @@ func removeDB(ctx *cli.Context) {
 	} else {
 		fmt.Println("Operation aborted")
 	}
+	return nil
 }
 
-func upgradeDB(ctx *cli.Context) {
+func upgradeDB(ctx *cli.Context) error {
 	glog.Infoln("Upgrading blockchain database")
 
 	chain, chainDb := utils.MakeChain(ctx)
@@ -162,14 +169,15 @@ func upgradeDB(ctx *cli.Context) {
 		os.Remove(exportFile)
 		glog.Infoln("Import finished")
 	}
+	return nil
 }
 
-func dump(ctx *cli.Context) {
+func dump(ctx *cli.Context) error {
 	chain, chainDb := utils.MakeChain(ctx)
 	for _, arg := range ctx.Args() {
 		var block *types.Block
 		if hashish(arg) {
-			block = chain.GetBlock(common.HexToHash(arg))
+			block = chain.GetBlockByHash(common.HexToHash(arg))
 		} else {
 			num, _ := strconv.Atoi(arg)
 			block = chain.GetBlockByNumber(uint64(num))
@@ -181,12 +189,12 @@ func dump(ctx *cli.Context) {
 			state, err := state.New(block.Root(), chainDb)
 			if err != nil {
 				utils.Fatalf("could not create new state: %v", err)
-				return
 			}
 			fmt.Printf("%s\n", state.Dump())
 		}
 	}
 	chainDb.Close()
+	return nil
 }
 
 // hashish returns true for strings that look like hashes.

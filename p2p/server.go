@@ -54,12 +54,8 @@ var errServerStopped = errors.New("server stopped")
 
 var srvjslog = logger.NewJsonLogger()
 
-// Server manages all peer connections.
-//
-// The fields of Server are used as configuration parameters.
-// You should set them before starting the Server. Fields may not be
-// modified while the server is running.
-type Server struct {
+// Config holds Server options.
+type Config struct {
 	// This field must be set to a valid secp256k1 private key.
 	PrivateKey *ecdsa.PrivateKey
 
@@ -120,6 +116,12 @@ type Server struct {
 
 	// If NoDial is true, the server will not dial any peers.
 	NoDial bool
+}
+
+// Server manages all peer connections.
+type Server struct {
+	// Config fields may not be modified while the server is running.
+	Config
 
 	// Hooks for testing. These are useful because we can inhibit
 	// the whole protocol stack.
@@ -140,6 +142,7 @@ type Server struct {
 
 	quit          chan struct{}
 	addstatic     chan *discover.Node
+	removestatic  chan *discover.Node
 	posthandshake chan *conn
 	addpeer       chan *conn
 	delpeer       chan *Peer
@@ -255,6 +258,14 @@ func (srv *Server) AddPeer(node *discover.Node) {
 	}
 }
 
+// RemovePeer disconnects from the given node
+func (srv *Server) RemovePeer(node *discover.Node) {
+	select {
+	case srv.removestatic <- node:
+	case <-srv.quit:
+	}
+}
+
 // Self returns the local node's endpoint information.
 func (srv *Server) Self() *discover.Node {
 	srv.lock.Lock()
@@ -325,6 +336,7 @@ func (srv *Server) Start() (err error) {
 	srv.delpeer = make(chan *Peer)
 	srv.posthandshake = make(chan *conn)
 	srv.addstatic = make(chan *discover.Node)
+	srv.removestatic = make(chan *discover.Node)
 	srv.peerOp = make(chan peerOpFunc)
 	srv.peerOpDone = make(chan struct{})
 
@@ -393,17 +405,17 @@ type dialer interface {
 	newTasks(running int, peers map[discover.NodeID]*Peer, now time.Time) []task
 	taskDone(task, time.Time)
 	addStatic(*discover.Node)
+	removeStatic(*discover.Node)
 }
 
 func (srv *Server) run(dialstate dialer) {
 	defer srv.loopWG.Done()
 	var (
-		peers   = make(map[discover.NodeID]*Peer)
-		trusted = make(map[discover.NodeID]bool, len(srv.TrustedNodes))
-
-		tasks        []task
-		pendingTasks []task
+		peers        = make(map[discover.NodeID]*Peer)
+		trusted      = make(map[discover.NodeID]bool, len(srv.TrustedNodes))
 		taskdone     = make(chan task, maxActiveDialTasks)
+		runningTasks []task
+		queuedTasks  []task // tasks that can't run yet
 	)
 	// Put trusted nodes into a map to speed up checks.
 	// Trusted peers are loaded on startup and cannot be
@@ -412,39 +424,39 @@ func (srv *Server) run(dialstate dialer) {
 		trusted[n.ID] = true
 	}
 
-	// Some task list helpers.
+	// removes t from runningTasks
 	delTask := func(t task) {
-		for i := range tasks {
-			if tasks[i] == t {
-				tasks = append(tasks[:i], tasks[i+1:]...)
+		for i := range runningTasks {
+			if runningTasks[i] == t {
+				runningTasks = append(runningTasks[:i], runningTasks[i+1:]...)
 				break
 			}
 		}
 	}
-	scheduleTasks := func(new []task) {
-		pt := append(pendingTasks, new...)
-		start := maxActiveDialTasks - len(tasks)
-		if len(pt) < start {
-			start = len(pt)
+	// starts until max number of active tasks is satisfied
+	startTasks := func(ts []task) (rest []task) {
+		i := 0
+		for ; len(runningTasks) < maxActiveDialTasks && i < len(ts); i++ {
+			t := ts[i]
+			glog.V(logger.Detail).Infoln("new task:", t)
+			go func() { t.Do(srv); taskdone <- t }()
+			runningTasks = append(runningTasks, t)
 		}
-		if start > 0 {
-			tasks = append(tasks, pt[:start]...)
-			for _, t := range pt[:start] {
-				t := t
-				glog.V(logger.Detail).Infoln("new task:", t)
-				go func() { t.Do(srv); taskdone <- t }()
-			}
-			copy(pt, pt[start:])
-			pendingTasks = pt[:len(pt)-start]
+		return ts[i:]
+	}
+	scheduleTasks := func() {
+		// Start from queue first.
+		queuedTasks = append(queuedTasks[:0], startTasks(queuedTasks)...)
+		// Query dialer for new tasks and start as many as possible now.
+		if len(runningTasks) < maxActiveDialTasks {
+			nt := dialstate.newTasks(len(runningTasks)+len(queuedTasks), peers, time.Now())
+			queuedTasks = append(queuedTasks, startTasks(nt)...)
 		}
 	}
 
 running:
 	for {
-		// Query the dialer for new tasks and launch them.
-		now := time.Now()
-		nt := dialstate.newTasks(len(pendingTasks)+len(tasks), peers, now)
-		scheduleTasks(nt)
+		scheduleTasks()
 
 		select {
 		case <-srv.quit:
@@ -457,6 +469,15 @@ running:
 			// it will keep the node connected.
 			glog.V(logger.Detail).Infoln("<-addstatic:", n)
 			dialstate.addStatic(n)
+		case n := <-srv.removestatic:
+			// This channel is used by RemovePeer to send a
+			// disconnect request to a peer and begin the
+			// stop keeping the node connected
+			glog.V(logger.Detail).Infoln("<-removestatic:", n)
+			dialstate.removeStatic(n)
+			if p, ok := peers[n.ID]; ok {
+				p.Disconnect(DiscRequested)
+			}
 		case op := <-srv.peerOp:
 			// This channel is used by Peers and PeerCount.
 			op(peers)
@@ -466,7 +487,7 @@ running:
 			// can update its state and remove it from the active
 			// tasks list.
 			glog.V(logger.Detail).Infoln("<-taskdone:", t)
-			dialstate.taskDone(t, now)
+			dialstate.taskDone(t, time.Now())
 			delTask(t)
 		case c := <-srv.posthandshake:
 			// A connection has passed the encryption handshake so
@@ -513,7 +534,7 @@ running:
 	// Wait for peers to shut down. Pending connections and tasks are
 	// not handled here and will terminate soon-ish because srv.quit
 	// is closed.
-	glog.V(logger.Detail).Infof("ignoring %d pending tasks at spindown", len(tasks))
+	glog.V(logger.Detail).Infof("ignoring %d pending tasks at spindown", len(runningTasks))
 	for len(peers) > 0 {
 		p := <-srv.delpeer
 		glog.V(logger.Detail).Infoln("<-delpeer (spindown):", p)

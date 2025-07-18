@@ -127,7 +127,7 @@ package {{.Package}}
 
 	// New{{.Type}} creates a new instance of {{.Type}}, bound to a specific deployed contract.
 	func New{{.Type}}(address common.Address, backend bind.ContractBackend) (*{{.Type}}, error) {
-	  contract, err := bind{{.Type}}(address, backend.(bind.ContractCaller), backend.(bind.ContractTransactor))
+	  contract, err := bind{{.Type}}(address, backend, backend)
 	  if err != nil {
 	    return nil, err
 	  }
@@ -211,7 +211,7 @@ package {{.Package}}
 				{{range $i, $_ := .Normalized.Outputs}}ret{{$i}} = new({{bindtype .Type}})
 				{{end}}
 			){{end}}
-			out := {{if .Structured}}ret{{else}}{{if eq (len .Normalized.Outputs) 1}}ret0{{else}}[]interface{}{
+			out := {{if .Structured}}ret{{else}}{{if eq (len .Normalized.Outputs) 1}}ret0{{else}}&[]interface{}{
 				{{range $i, $_ := .Normalized.Outputs}}ret{{$i}},
 				{{end}}
 			}{{end}}{{end}}

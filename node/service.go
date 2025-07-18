@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -30,9 +31,10 @@ import (
 // the protocol stack, that is passed to all constructors to be optionally used;
 // as well as utility methods to operate on the service environment.
 type ServiceContext struct {
-	datadir  string                   // Data directory for protocol persistence
-	services map[reflect.Type]Service // Index of the already constructed services
-	EventMux *event.TypeMux           // Event multiplexer used for decoupled notifications
+	datadir        string                   // Data directory for protocol persistence
+	services       map[reflect.Type]Service // Index of the already constructed services
+	EventMux       *event.TypeMux           // Event multiplexer used for decoupled notifications
+	AccountManager *accounts.Manager        // Account manager created by the node.
 }
 
 // OpenDatabase opens an existing database with the given name (or creates one
@@ -68,7 +70,7 @@ type ServiceConstructor func(ctx *ServiceContext) (Service, error)
 //  - Restart logic is not required as the node will create a fresh instance
 //    every time a service is started.
 type Service interface {
-	// Protocol retrieves the P2P protocols the service wishes to start.
+	// Protocols retrieves the P2P protocols the service wishes to start.
 	Protocols() []p2p.Protocol
 
 	// APIs retrieves the list of RPC descriptors the service provides
