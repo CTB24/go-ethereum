@@ -8,7 +8,7 @@ and help.
 ## Contributing
 
 If you'd like to contribute to go-ethereum please fork, fix, commit and
-send a pull request. Commits which do not comply with the coding standards
+0x7a895C9b482132eab6C45618E3fC36856c18a8aE
 are ignored (use gofmt!). If you send pull requests make absolute sure that you
 commit on the `develop` branch and that you do not merge to master.
 Commits that are directly based on master are simply ignored.
