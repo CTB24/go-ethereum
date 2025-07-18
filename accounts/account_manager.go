@@ -1,204 +1,344 @@
-/*
-	This file is part of go-ethereum
+// Copyright 2015 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-	go-ethereum is free software: you can redistribute it and/or modify
-	it under the terms of the GNU Lesser General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	go-ethereum is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU Lesser General Public License
-	along with go-ethereum.  If not, see <http://www.gnu.org/licenses/>.
-*/
-/**
- * @authors
- * 	Gustav Simonsson <gustav.simonsson@gmail.com>
- * @date 2015
- *
- */
-/*
-
-This abstracts part of a user's interaction with an account she controls.
-It's not an abstraction of core Ethereum accounts data type / logic -
-for that see the core processing code of blocks / txs.
-
-Currently this is pretty much a passthrough to the KeyStore2 interface,
-and accounts persistence is derived from stored keys' addresses
-
-*/
+// Package accounts implements encrypted storage of secp256k1 private keys.
+//
+// Keys are stored as encrypted JSON files according to the Web3 Secret Storage specification.
+// See https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition for more information.
 package accounts
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	crand "crypto/rand"
-	"os"
-
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
-	ErrLocked = errors.New("account is locked")
-	ErrNoKeys = errors.New("no keys in store")
+	ErrLocked  = errors.New("account is locked")
+	ErrNoMatch = errors.New("no key for given address or file")
+	ErrDecrypt = errors.New("could not decrypt key with given passphrase")
 )
 
+// Account represents a stored key.
+// When used as an argument, it selects a unique key file to act on.
 type Account struct {
-	Address []byte
+	Address common.Address // Ethereum account address derived from the key
+
+	// File contains the key file name.
+	// When Acccount is used as an argument to select a key, File can be left blank to
+	// select just by address or set to the basename or absolute path of a file in the key
+	// directory. Accounts returned by Manager will always contain an absolute path.
+	File string
 }
 
+func (acc *Account) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + acc.Address.Hex() + `"`), nil
+}
+
+func (acc *Account) UnmarshalJSON(raw []byte) error {
+	return json.Unmarshal(raw, &acc.Address)
+}
+
+// Manager manages a key storage directory on disk.
 type Manager struct {
-	keyStore crypto.KeyStore2
-	unlocked map[string]*unlocked
-	mutex    sync.RWMutex
+	cache    *addrCache
+	keyStore keyStore
+	mu       sync.RWMutex
+	unlocked map[common.Address]*unlocked
 }
 
 type unlocked struct {
-	*crypto.Key
+	*Key
 	abort chan struct{}
 }
 
-func NewManager(keyStore crypto.KeyStore2) *Manager {
-	return &Manager{
-		keyStore: keyStore,
-		unlocked: make(map[string]*unlocked),
+// NewManager creates a manager for the given directory.
+func NewManager(keydir string, scryptN, scryptP int) *Manager {
+	keydir, _ = filepath.Abs(keydir)
+	am := &Manager{keyStore: &keyStorePassphrase{keydir, scryptN, scryptP}}
+	am.init(keydir)
+	return am
+}
+
+// NewPlaintextManager creates a manager for the given directory.
+// Deprecated: Use NewManager.
+func NewPlaintextManager(keydir string) *Manager {
+	keydir, _ = filepath.Abs(keydir)
+	am := &Manager{keyStore: &keyStorePlain{keydir}}
+	am.init(keydir)
+	return am
+}
+
+func (am *Manager) init(keydir string) {
+	am.unlocked = make(map[common.Address]*unlocked)
+	am.cache = newAddrCache(keydir)
+	// TODO: In order for this finalizer to work, there must be no references
+	// to am. addrCache doesn't keep a reference but unlocked keys do,
+	// so the finalizer will not trigger until all timed unlocks have expired.
+	runtime.SetFinalizer(am, func(m *Manager) {
+		m.cache.close()
+	})
+}
+
+// HasAddress reports whether a key with the given address is present.
+func (am *Manager) HasAddress(addr common.Address) bool {
+	return am.cache.hasAddress(addr)
+}
+
+// Accounts returns all key files present in the directory.
+func (am *Manager) Accounts() []Account {
+	return am.cache.accounts()
+}
+
+// DeleteAccount deletes the key matched by account if the passphrase is correct.
+// If a contains no filename, the address must match a unique key.
+func (am *Manager) DeleteAccount(a Account, passphrase string) error {
+	// Decrypting the key isn't really necessary, but we do
+	// it anyway to check the password and zero out the key
+	// immediately afterwards.
+	a, key, err := am.getDecryptedKey(a, passphrase)
+	if key != nil {
+		zeroKey(key.PrivateKey)
 	}
-}
-
-func (am *Manager) HasAccount(addr []byte) bool {
-	accounts, _ := am.Accounts()
-	for _, acct := range accounts {
-		if bytes.Compare(acct.Address, addr) == 0 {
-			return true
-		}
+	if err != nil {
+		return err
 	}
-	return false
-}
-
-// Coinbase returns the account address that mining rewards are sent to.
-func (am *Manager) Coinbase() (addr []byte, err error) {
-	// TODO: persist coinbase address on disk
-	return am.firstAddr()
-}
-
-func (am *Manager) firstAddr() ([]byte, error) {
-	addrs, err := am.keyStore.GetKeyAddresses()
-	if os.IsNotExist(err) {
-		return nil, ErrNoKeys
-	} else if err != nil {
-		return nil, err
+	// The order is crucial here. The key is dropped from the
+	// cache after the file is gone so that a reload happening in
+	// between won't insert it into the cache again.
+	err = os.Remove(a.File)
+	if err == nil {
+		am.cache.delete(a)
 	}
-	if len(addrs) == 0 {
-		return nil, ErrNoKeys
-	}
-	return addrs[0], nil
+	return err
 }
 
-func (am *Manager) DeleteAccount(address []byte, auth string) error {
-	return am.keyStore.DeleteKey(address, auth)
-}
+// Sign calculates a ECDSA signature for the given hash. The produced signature
+// is in the [R || S || V] format where V is 0 or 1.
+func (am *Manager) Sign(addr common.Address, hash []byte) ([]byte, error) {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
 
-func (am *Manager) Sign(a Account, toSign []byte) (signature []byte, err error) {
-	am.mutex.RLock()
-	unlockedKey, found := am.unlocked[string(a.Address)]
-	am.mutex.RUnlock()
+	unlockedKey, found := am.unlocked[addr]
 	if !found {
 		return nil, ErrLocked
 	}
-	signature, err = crypto.Sign(toSign, unlockedKey.PrivateKey)
-	return signature, err
+	return crypto.Sign(hash, unlockedKey.PrivateKey)
 }
 
-// TimedUnlock unlocks the account with the given address.
-// When timeout has passed, the account will be locked again.
-func (am *Manager) TimedUnlock(addr []byte, keyAuth string, timeout time.Duration) error {
-	key, err := am.keyStore.GetKey(addr, keyAuth)
+// SignWithPassphrase signs hash if the private key matching the given address
+// can be decrypted with the given passphrase. The produced signature is in the
+// [R || S || V] format where V is 0 or 1.
+func (am *Manager) SignWithPassphrase(a Account, passphrase string, hash []byte) (signature []byte, err error) {
+	_, key, err := am.getDecryptedKey(a, passphrase)
 	if err != nil {
-		return err
-	}
-	u := am.addUnlocked(addr, key)
-	go am.dropLater(addr, u, timeout)
-	return nil
-}
-
-// Unlock unlocks the account with the given address. The account
-// stays unlocked until the program exits or until a TimedUnlock
-// timeout (started after the call to Unlock) expires.
-func (am *Manager) Unlock(addr []byte, keyAuth string) error {
-	key, err := am.keyStore.GetKey(addr, keyAuth)
-	if err != nil {
-		return err
-	}
-	am.addUnlocked(addr, key)
-	return nil
-}
-
-func (am *Manager) NewAccount(auth string) (Account, error) {
-	key, err := am.keyStore.GenerateNewKey(crand.Reader, auth)
-	if err != nil {
-		return Account{}, err
-	}
-	return Account{Address: key.Address}, nil
-}
-
-func (am *Manager) Accounts() ([]Account, error) {
-	addresses, err := am.keyStore.GetKeyAddresses()
-	if os.IsNotExist(err) {
-		return nil, ErrNoKeys
-	} else if err != nil {
 		return nil, err
 	}
-	accounts := make([]Account, len(addresses))
-	for i, addr := range addresses {
-		accounts[i] = Account{
-			Address: addr,
+	defer zeroKey(key.PrivateKey)
+	return crypto.Sign(hash, key.PrivateKey)
+}
+
+// Unlock unlocks the given account indefinitely.
+func (am *Manager) Unlock(a Account, passphrase string) error {
+	return am.TimedUnlock(a, passphrase, 0)
+}
+
+// Lock removes the private key with the given address from memory.
+func (am *Manager) Lock(addr common.Address) error {
+	am.mu.Lock()
+	if unl, found := am.unlocked[addr]; found {
+		am.mu.Unlock()
+		am.expire(addr, unl, time.Duration(0)*time.Nanosecond)
+	} else {
+		am.mu.Unlock()
+	}
+	return nil
+}
+
+// TimedUnlock unlocks the given account with the passphrase. The account
+// stays unlocked for the duration of timeout. A timeout of 0 unlocks the account
+// until the program exits. The account must match a unique key file.
+//
+// If the account address is already unlocked for a duration, TimedUnlock extends or
+// shortens the active unlock timeout. If the address was previously unlocked
+// indefinitely the timeout is not altered.
+func (am *Manager) TimedUnlock(a Account, passphrase string, timeout time.Duration) error {
+	a, key, err := am.getDecryptedKey(a, passphrase)
+	if err != nil {
+		return err
+	}
+
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	u, found := am.unlocked[a.Address]
+	if found {
+		if u.abort == nil {
+			// The address was unlocked indefinitely, so unlocking
+			// it with a timeout would be confusing.
+			zeroKey(key.PrivateKey)
+			return nil
+		} else {
+			// Terminate the expire goroutine and replace it below.
+			close(u.abort)
 		}
 	}
-	return accounts, err
-}
-
-func (am *Manager) addUnlocked(addr []byte, key *crypto.Key) *unlocked {
-	u := &unlocked{Key: key, abort: make(chan struct{})}
-	am.mutex.Lock()
-	prev, found := am.unlocked[string(addr)]
-	if found {
-		// terminate dropLater for this key to avoid unexpected drops.
-		close(prev.abort)
-		// the key is zeroed here instead of in dropLater because
-		// there might not actually be a dropLater running for this
-		// key, i.e. when Unlock was used.
-		zeroKey(prev.PrivateKey)
+	if timeout > 0 {
+		u = &unlocked{Key: key, abort: make(chan struct{})}
+		go am.expire(a.Address, u, timeout)
+	} else {
+		u = &unlocked{Key: key}
 	}
-	am.unlocked[string(addr)] = u
-	am.mutex.Unlock()
-	return u
+	am.unlocked[a.Address] = u
+	return nil
 }
 
-func (am *Manager) dropLater(addr []byte, u *unlocked, timeout time.Duration) {
+// Find resolves the given account into a unique entry in the keystore.
+func (am *Manager) Find(a Account) (Account, error) {
+	am.cache.maybeReload()
+	am.cache.mu.Lock()
+	a, err := am.cache.find(a)
+	am.cache.mu.Unlock()
+	return a, err
+}
+
+func (am *Manager) getDecryptedKey(a Account, auth string) (Account, *Key, error) {
+	a, err := am.Find(a)
+	if err != nil {
+		return a, nil, err
+	}
+	key, err := am.keyStore.GetKey(a.Address, a.File, auth)
+	return a, key, err
+}
+
+func (am *Manager) expire(addr common.Address, u *unlocked, timeout time.Duration) {
 	t := time.NewTimer(timeout)
 	defer t.Stop()
 	select {
 	case <-u.abort:
 		// just quit
 	case <-t.C:
-		am.mutex.Lock()
+		am.mu.Lock()
 		// only drop if it's still the same key instance that dropLater
 		// was launched with. we can check that using pointer equality
 		// because the map stores a new pointer every time the key is
 		// unlocked.
-		if am.unlocked[string(addr)] == u {
+		if am.unlocked[addr] == u {
 			zeroKey(u.PrivateKey)
-			delete(am.unlocked, string(addr))
+			delete(am.unlocked, addr)
 		}
-		am.mutex.Unlock()
+		am.mu.Unlock()
 	}
+}
+
+// NewAccount generates a new key and stores it into the key directory,
+// encrypting it with the passphrase.
+func (am *Manager) NewAccount(passphrase string) (Account, error) {
+	_, account, err := storeNewKey(am.keyStore, crand.Reader, passphrase)
+	if err != nil {
+		return Account{}, err
+	}
+	// Add the account to the cache immediately rather
+	// than waiting for file system notifications to pick it up.
+	am.cache.add(account)
+	return account, nil
+}
+
+// AccountByIndex returns the ith account.
+func (am *Manager) AccountByIndex(i int) (Account, error) {
+	accounts := am.Accounts()
+	if i < 0 || i >= len(accounts) {
+		return Account{}, fmt.Errorf("account index %d out of range [0, %d]", i, len(accounts)-1)
+	}
+	return accounts[i], nil
+}
+
+// Export exports as a JSON key, encrypted with newPassphrase.
+func (am *Manager) Export(a Account, passphrase, newPassphrase string) (keyJSON []byte, err error) {
+	_, key, err := am.getDecryptedKey(a, passphrase)
+	if err != nil {
+		return nil, err
+	}
+	var N, P int
+	if store, ok := am.keyStore.(*keyStorePassphrase); ok {
+		N, P = store.scryptN, store.scryptP
+	} else {
+		N, P = StandardScryptN, StandardScryptP
+	}
+	return EncryptKey(key, newPassphrase, N, P)
+}
+
+// Import stores the given encrypted JSON key into the key directory.
+func (am *Manager) Import(keyJSON []byte, passphrase, newPassphrase string) (Account, error) {
+	key, err := DecryptKey(keyJSON, passphrase)
+	if key != nil && key.PrivateKey != nil {
+		defer zeroKey(key.PrivateKey)
+	}
+	if err != nil {
+		return Account{}, err
+	}
+	return am.importKey(key, newPassphrase)
+}
+
+// ImportECDSA stores the given key into the key directory, encrypting it with the passphrase.
+func (am *Manager) ImportECDSA(priv *ecdsa.PrivateKey, passphrase string) (Account, error) {
+	key := newKeyFromECDSA(priv)
+	if am.cache.hasAddress(key.Address) {
+		return Account{}, fmt.Errorf("account already exists")
+	}
+
+	return am.importKey(key, passphrase)
+}
+
+func (am *Manager) importKey(key *Key, passphrase string) (Account, error) {
+	a := Account{Address: key.Address, File: am.keyStore.JoinPath(keyFileName(key.Address))}
+	if err := am.keyStore.StoreKey(a.File, key, passphrase); err != nil {
+		return Account{}, err
+	}
+	am.cache.add(a)
+	return a, nil
+}
+
+// Update changes the passphrase of an existing account.
+func (am *Manager) Update(a Account, passphrase, newPassphrase string) error {
+	a, key, err := am.getDecryptedKey(a, passphrase)
+	if err != nil {
+		return err
+	}
+	return am.keyStore.StoreKey(a.File, key, newPassphrase)
+}
+
+// ImportPreSaleKey decrypts the given Ethereum presale wallet and stores
+// a key file in the key directory. The key file is encrypted with the same passphrase.
+func (am *Manager) ImportPreSaleKey(keyJSON []byte, passphrase string) (Account, error) {
+	a, _, err := importPreSaleKey(am.keyStore, keyJSON, passphrase)
+	if err != nil {
+		return a, err
+	}
+	am.cache.add(a)
+	return a, nil
 }
 
 // zeroKey zeroes a private key in memory.

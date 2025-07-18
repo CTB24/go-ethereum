@@ -1,3 +1,32 @@
+// Copyright (c) 2013 Kyle Isom <kyle@tyrfingr.is>
+// Copyright (c) 2012 The Go Authors. All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+//    * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//    * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//    * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 package ecies
 
 import (
@@ -12,6 +41,8 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 )
 
 var (
@@ -52,11 +83,10 @@ func doScheme(base, v []int) asn1.ObjectIdentifier {
 type secgNamedCurve asn1.ObjectIdentifier
 
 var (
-	secgNamedCurveP224 = secgNamedCurve{1, 3, 132, 0, 33}
+	secgNamedCurveS256 = secgNamedCurve{1, 3, 132, 0, 10}
 	secgNamedCurveP256 = secgNamedCurve{1, 2, 840, 10045, 3, 1, 7}
 	secgNamedCurveP384 = secgNamedCurve{1, 3, 132, 0, 34}
 	secgNamedCurveP521 = secgNamedCurve{1, 3, 132, 0, 35}
-	rawCurveP224       = []byte{6, 5, 4, 3, 1, 2, 9, 4, 0, 3, 3}
 	rawCurveP256       = []byte{6, 8, 4, 2, 1, 3, 4, 7, 2, 2, 0, 6, 6, 1, 3, 1, 7}
 	rawCurveP384       = []byte{6, 5, 4, 3, 1, 2, 9, 4, 0, 3, 4}
 	rawCurveP521       = []byte{6, 5, 4, 3, 1, 2, 9, 4, 0, 3, 5}
@@ -64,8 +94,6 @@ var (
 
 func rawCurve(curve elliptic.Curve) []byte {
 	switch curve {
-	case elliptic.P224():
-		return rawCurveP224
 	case elliptic.P256():
 		return rawCurveP256
 	case elliptic.P384():
@@ -81,7 +109,7 @@ func (curve secgNamedCurve) Equal(curve2 secgNamedCurve) bool {
 	if len(curve) != len(curve2) {
 		return false
 	}
-	for i, _ := range curve {
+	for i := range curve {
 		if curve[i] != curve2[i] {
 			return false
 		}
@@ -91,8 +119,8 @@ func (curve secgNamedCurve) Equal(curve2 secgNamedCurve) bool {
 
 func namedCurveFromOID(curve secgNamedCurve) elliptic.Curve {
 	switch {
-	case curve.Equal(secgNamedCurveP224):
-		return elliptic.P224()
+	case curve.Equal(secgNamedCurveS256):
+		return secp256k1.S256()
 	case curve.Equal(secgNamedCurveP256):
 		return elliptic.P256()
 	case curve.Equal(secgNamedCurveP384):
@@ -105,14 +133,14 @@ func namedCurveFromOID(curve secgNamedCurve) elliptic.Curve {
 
 func oidFromNamedCurve(curve elliptic.Curve) (secgNamedCurve, bool) {
 	switch curve {
-	case elliptic.P224():
-		return secgNamedCurveP224, true
 	case elliptic.P256():
 		return secgNamedCurveP256, true
 	case elliptic.P384():
 		return secgNamedCurveP384, true
 	case elliptic.P521():
 		return secgNamedCurveP521, true
+	case secp256k1.S256():
+		return secgNamedCurveS256, true
 	}
 
 	return nil, false
@@ -129,7 +157,7 @@ func (a asnAlgorithmIdentifier) Cmp(b asnAlgorithmIdentifier) bool {
 	if len(a.Algorithm) != len(b.Algorithm) {
 		return false
 	}
-	for i, _ := range a.Algorithm {
+	for i := range a.Algorithm {
 		if a.Algorithm[i] != b.Algorithm[i] {
 			return false
 		}
@@ -219,7 +247,7 @@ var idEcPublicKeySupplemented = doScheme(idPublicKeyType, []int{0})
 
 func curveToRaw(curve elliptic.Curve) (rv asn1.RawValue, ok bool) {
 	switch curve {
-	case elliptic.P224(), elliptic.P256(), elliptic.P384(), elliptic.P521():
+	case elliptic.P256(), elliptic.P384(), elliptic.P521():
 		raw := rawCurve(curve)
 		return asn1.RawValue{
 			Tag:       30,
@@ -278,7 +306,7 @@ func (a asnECDHAlgorithm) Cmp(b asnECDHAlgorithm) bool {
 	if len(a.Algorithm) != len(b.Algorithm) {
 		return false
 	}
-	for i, _ := range a.Algorithm {
+	for i := range a.Algorithm {
 		if a.Algorithm[i] != b.Algorithm[i] {
 			return false
 		}
@@ -297,7 +325,7 @@ func (a asnKeyDerivationFunction) Cmp(b asnKeyDerivationFunction) bool {
 	if len(a.Algorithm) != len(b.Algorithm) {
 		return false
 	}
-	for i, _ := range a.Algorithm {
+	for i := range a.Algorithm {
 		if a.Algorithm[i] != b.Algorithm[i] {
 			return false
 		}
@@ -332,7 +360,7 @@ func (a asnSymmetricEncryption) Cmp(b asnSymmetricEncryption) bool {
 	if len(a.Algorithm) != len(b.Algorithm) {
 		return false
 	}
-	for i, _ := range a.Algorithm {
+	for i := range a.Algorithm {
 		if a.Algorithm[i] != b.Algorithm[i] {
 			return false
 		}
@@ -352,7 +380,7 @@ func (a asnMessageAuthenticationCode) Cmp(b asnMessageAuthenticationCode) bool {
 	if len(a.Algorithm) != len(b.Algorithm) {
 		return false
 	}
-	for i, _ := range a.Algorithm {
+	for i := range a.Algorithm {
 		if a.Algorithm[i] != b.Algorithm[i] {
 			return false
 		}

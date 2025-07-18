@@ -1,13 +1,24 @@
+// Copyright 2015 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package randentropy
 
 import (
 	crand "crypto/rand"
-	"encoding/binary"
-	"github.com/ethereum/go-ethereum/crypto/sha3"
 	"io"
-	"os"
-	"strings"
-	"time"
 )
 
 var Reader io.Reader = &randEntropy{}
@@ -16,51 +27,9 @@ type randEntropy struct {
 }
 
 func (*randEntropy) Read(bytes []byte) (n int, err error) {
-	readBytes := GetEntropyMixed(len(bytes))
+	readBytes := GetEntropyCSPRNG(len(bytes))
 	copy(bytes, readBytes)
 	return len(bytes), nil
-}
-
-// TODO: copied from crypto.go , move to sha3 package?
-func Sha3(data []byte) []byte {
-	d := sha3.NewKeccak256()
-	d.Write(data)
-
-	return d.Sum(nil)
-}
-
-// TODO: verify. this needs to be audited
-// we start with crypt/rand, then XOR in additional entropy from OS
-func GetEntropyMixed(n int) []byte {
-	startTime := time.Now().UnixNano()
-	// for each source, we take SHA3 of the source and use it as seed to math/rand
-	// then read bytes from it and XOR them onto the bytes read from crypto/rand
-	mainBuff := GetEntropyCSPRNG(n)
-	// 1. OS entropy sources
-	startTimeBytes := make([]byte, 32)
-	binary.PutVarint(startTimeBytes, startTime)
-	startTimeHash := Sha3(startTimeBytes)
-	mixBytes(mainBuff, startTimeHash)
-
-	pid := os.Getpid()
-	pidBytes := make([]byte, 32)
-	binary.PutUvarint(pidBytes, uint64(pid))
-	pidHash := Sha3(pidBytes)
-	mixBytes(mainBuff, pidHash)
-
-	osEnv := os.Environ()
-	osEnvBytes := []byte(strings.Join(osEnv, ""))
-	osEnvHash := Sha3(osEnvBytes)
-	mixBytes(mainBuff, osEnvHash)
-
-	// not all OS have hostname in env variables
-	osHostName, err := os.Hostname()
-	if err != nil {
-		osHostNameBytes := []byte(osHostName)
-		osHostNameHash := Sha3(osHostNameBytes)
-		mixBytes(mainBuff, osHostNameHash)
-	}
-	return mainBuff
 }
 
 func GetEntropyCSPRNG(n int) []byte {
@@ -70,15 +39,4 @@ func GetEntropyCSPRNG(n int) []byte {
 		panic("reading from crypto/rand failed: " + err.Error())
 	}
 	return mainBuff
-}
-
-func mixBytes(buff []byte, mixBuff []byte) []byte {
-	bytesToMix := len(buff)
-	if bytesToMix > 32 {
-		bytesToMix = 32
-	}
-	for i := 0; i < bytesToMix; i++ {
-		buff[i] ^= mixBuff[i]
-	}
-	return buff
 }

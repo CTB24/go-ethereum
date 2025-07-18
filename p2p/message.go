@@ -1,3 +1,19 @@
+// Copyright 2014 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package p2p
 
 import (
@@ -11,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/ethutil"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -23,24 +38,20 @@ import (
 // structure, encode the payload into a byte array and create a
 // separate Msg with a bytes.Reader as Payload for each send.
 type Msg struct {
-	Code    uint64
-	Size    uint32 // size of the paylod
-	Payload io.Reader
+	Code       uint64
+	Size       uint32 // size of the paylod
+	Payload    io.Reader
+	ReceivedAt time.Time
 }
 
-// NewMsg creates an RLP-encoded message with the given code.
-func NewMsg(code uint64, params ...interface{}) Msg {
-	p := bytes.NewReader(ethutil.Encode(params))
-	return Msg{Code: code, Size: uint32(p.Len()), Payload: p}
-}
-
-// Decode parse the RLP content of a message into
+// Decode parses the RLP content of a message into
 // the given value, which must be a pointer.
 //
 // For the decoding rules, please see package rlp.
 func (msg Msg) Decode(val interface{}) error {
-	if err := rlp.Decode(msg.Payload, val); err != nil {
-		return newPeerError(errInvalidMsg, "(code %#x) (size %d) %v", msg.Code, msg.Size, err)
+	s := rlp.NewStream(msg.Payload, uint64(msg.Size))
+	if err := s.Decode(val); err != nil {
+		return newPeerError(errInvalidMsg, "(code %x) (size %d) %v", msg.Code, msg.Size, err)
 	}
 	return nil
 }
@@ -76,13 +87,30 @@ type MsgReadWriter interface {
 	MsgWriter
 }
 
-// EncodeMsg writes an RLP-encoded message with the given code and
-// data elements.
-func EncodeMsg(w MsgWriter, code uint64, data ...interface{}) error {
-	return w.WriteMsg(NewMsg(code, data...))
+// Send writes an RLP-encoded message with the given code.
+// data should encode as an RLP list.
+func Send(w MsgWriter, msgcode uint64, data interface{}) error {
+	size, r, err := rlp.EncodeToReader(data)
+	if err != nil {
+		return err
+	}
+	return w.WriteMsg(Msg{Code: msgcode, Size: uint32(size), Payload: r})
 }
 
-// netWrapper wrapsa MsgReadWriter with locks around
+// SendItems writes an RLP with the given code and data elements.
+// For a call such as:
+//
+//    SendItems(w, code, e1, e2, e3)
+//
+// the message payload will be an RLP list containing the items:
+//
+//    [e1, e2, e3]
+//
+func SendItems(w MsgWriter, msgcode uint64, elems ...interface{}) error {
+	return Send(w, msgcode, elems)
+}
+
+// netWrapper wraps a MsgReadWriter with locks around
 // ReadMsg/WriteMsg and applies read/write deadlines.
 type netWrapper struct {
 	rmu, wmu sync.Mutex
@@ -175,7 +203,10 @@ func (p *MsgPipeRW) WriteMsg(msg Msg) error {
 		case p.w <- msg:
 			if msg.Size > 0 {
 				// wait for payload read or discard
-				<-consumed
+				select {
+				case <-consumed:
+				case <-p.closing:
+				}
 			}
 			return nil
 		case <-p.closing:
@@ -197,8 +228,8 @@ func (p *MsgPipeRW) ReadMsg() (Msg, error) {
 }
 
 // Close unblocks any pending ReadMsg and WriteMsg calls on both ends
-// of the pipe. They will return ErrPipeClosed. Note that Close does
-// not interrupt any reads from a message payload.
+// of the pipe. They will return ErrPipeClosed. Close also
+// interrupts any reads from a message payload.
 func (p *MsgPipeRW) Close() error {
 	if atomic.AddInt32(p.closed, 1) != 1 {
 		// someone else is already closing
@@ -206,5 +237,37 @@ func (p *MsgPipeRW) Close() error {
 		return nil
 	}
 	close(p.closing)
+	return nil
+}
+
+// ExpectMsg reads a message from r and verifies that its
+// code and encoded RLP content match the provided values.
+// If content is nil, the payload is discarded and not verified.
+func ExpectMsg(r MsgReader, code uint64, content interface{}) error {
+	msg, err := r.ReadMsg()
+	if err != nil {
+		return err
+	}
+	if msg.Code != code {
+		return fmt.Errorf("message code mismatch: got %d, expected %d", msg.Code, code)
+	}
+	if content == nil {
+		return msg.Discard()
+	} else {
+		contentEnc, err := rlp.EncodeToBytes(content)
+		if err != nil {
+			panic("content encode error: " + err.Error())
+		}
+		if int(msg.Size) != len(contentEnc) {
+			return fmt.Errorf("message size mismatch: got %d, want %d", msg.Size, len(contentEnc))
+		}
+		actualContent, err := ioutil.ReadAll(msg.Payload)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(actualContent, contentEnc) {
+			return fmt.Errorf("message payload mismatch:\ngot:  %x\nwant: %x", actualContent, contentEnc)
+		}
+	}
 	return nil
 }

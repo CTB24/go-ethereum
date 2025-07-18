@@ -1,3 +1,19 @@
+// Copyright 2014 The go-ethereum Authors
+// This file is part of the go-ethereum library.
+//
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The go-ethereum library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+
 package p2p
 
 import (
@@ -5,33 +21,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestNewMsg(t *testing.T) {
-	msg := NewMsg(3, 1, "000")
-	if msg.Code != 3 {
-		t.Errorf("incorrect code %d, want %d", msg.Code)
-	}
-	expect := unhex("c50183303030")
-	if msg.Size != uint32(len(expect)) {
-		t.Errorf("incorrect size %d, want %d", msg.Size, len(expect))
-	}
-	pl, _ := ioutil.ReadAll(msg.Payload)
-	if !bytes.Equal(pl, expect) {
-		t.Errorf("incorrect payload content, got %x, want %x", pl, expect)
-	}
-}
-
 func ExampleMsgPipe() {
 	rw1, rw2 := MsgPipe()
 	go func() {
-		EncodeMsg(rw1, 8, []byte{0, 0})
-		EncodeMsg(rw1, 5, []byte{1, 1})
+		Send(rw1, 8, [][]byte{{0, 0}})
+		Send(rw1, 5, [][]byte{{1, 1}})
 		rw1.Close()
 	}()
 
@@ -40,7 +40,7 @@ func ExampleMsgPipe() {
 		if err != nil {
 			break
 		}
-		var data [1][]byte
+		var data [][]byte
 		msg.Decode(&data)
 		fmt.Printf("msg: %d, %x\n", msg.Code, data[0])
 	}
@@ -55,10 +55,10 @@ loop:
 		rw1, rw2 := MsgPipe()
 		done := make(chan struct{})
 		go func() {
-			if err := EncodeMsg(rw1, 1); err == nil {
+			if err := SendItems(rw1, 1); err == nil {
 				t.Error("EncodeMsg returned nil error")
 			} else if err != ErrPipeClosed {
-				t.Error("EncodeMsg returned wrong error: got %v, want %v", err, ErrPipeClosed)
+				t.Errorf("EncodeMsg returned wrong error: got %v, want %v", err, ErrPipeClosed)
 			}
 			close(done)
 		}()
@@ -143,7 +143,8 @@ func TestEOFSignal(t *testing.T) {
 }
 
 func unhex(str string) []byte {
-	b, err := hex.DecodeString(strings.Replace(str, "\n", "", -1))
+	r := strings.NewReplacer("\t", "", " ", "", "\n", "")
+	b, err := hex.DecodeString(r.Replace(str))
 	if err != nil {
 		panic(fmt.Sprintf("invalid hex string: %q", str))
 	}
